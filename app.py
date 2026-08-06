@@ -160,9 +160,8 @@ with st.sidebar:
     st.markdown("---")
     
     sayfa = st.radio(
-        "MENÜ",
-        ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Ayarlar"],
-        icon="📌"
+        "📌 MENÜ",
+        ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Ayarlar"]
     )
     
     st.markdown("---")
@@ -336,7 +335,7 @@ elif sayfa == "Ustalar":
         with col:
             st.markdown(f"""
             <div class="metric-card">
-                <div style="display:flex; justify-between; align-items:center;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
                     <h3 style="margin:0; color:#58a6ff;">{usta['ad_soyad']}</h3>
                     <div>{status_badge}</div>
                 </div>
