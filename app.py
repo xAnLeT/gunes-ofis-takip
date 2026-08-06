@@ -52,7 +52,7 @@ def init_db():
   conn = get_db()
   c = conn.cursor()
 
-  # 1. Kayıtlar Tablosu (Regülatör kaldırıldı, diger_islemler eklendi)
+  # 1. Kayıtlar Tablosu (Regülatör yok, diger_islemler var)
   c.execute("""CREATE TABLE IF NOT EXISTS kayitlar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     seri_no TEXT,
@@ -212,7 +212,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- OTURUM (SESSION) YÖNETİMİ (F5 Korumalı) ---
+# --- OTURUM (SESSION) YÖNETİMİ ---
 if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
 if "user_info" not in st.session_state:
@@ -550,10 +550,15 @@ if sayfa == "Dashboard":
                   "Randevu Alındı",
               ],
           )
-          # Diğer İşlemler (Cihaz Değişimi, Randevu Reddi eklendi)
+          # Diğer İşlemler (Cihaz Değişimi, Randevu Reddi dahil)
           diger_islemler = st.multiselect(
               "Diğer İşlemler",
-              ["Cihaz Değişimi", "Randevu Reddi", "Kolon Tesisatı", "İç Tesisat"],
+              [
+                  "Cihaz Değişimi",
+                  "Randevu Reddi",
+                  "Kolon Tesisatı",
+                  "İç Tesisat",
+              ],
           )
           sayac_seri_no = st.text_input("Sayaç Seri No")
           notlar = st.text_input("Notlar")
@@ -929,10 +934,10 @@ elif sayfa == "Ustalar":
               st.rerun()
 
 # ==========================================
-# SAYFA 5: RAPORLAR & ANALİZ
+# SAYFA 5: RAPORLAR, ANALİZ & GRAFİK TABLOSU
 # ==========================================
 elif sayfa == "Raporlar & Analiz":
-  st.title("📊 Raporlar & Mali Analiz ve Kaldırma Paneli")
+  st.title("📊 Raporlar, Mali Analiz & Grafik Takibi")
 
   if not izin_rapor_goruntule:
     st.warning("⚠️ Raporları görüntüleme yetkiniz bulunmamaktadır.")
@@ -995,6 +1000,42 @@ elif sayfa == "Raporlar & Analiz":
         )
 
       st.markdown("<br>", unsafe_allow_html=True)
+
+      # --- YENİ EKLENEN GRAFİK / GÖRSEL TAKİP BÖLÜMÜ ---
+      st.subheader("📈 Görsel Grafik & Takip Paneli")
+      g_col1, g_col2 = st.columns(2)
+
+      with g_col1:
+        st.markdown("**Usta Bazlı Ciro Dağılımı (TL)**")
+        if not df_filtered.empty and "usta_adi" in df_filtered.columns:
+          usta_ciro = (
+              df_filtered.groupby("usta_adi")["toplam_bedel"]
+              .sum()
+              .reset_index()
+          )
+          if not usta_ciro.empty:
+            st.bar_chart(
+                usta_ciro.set_index("usta_adi")["toplam_bedel"],
+                color="#f59e0b",
+            )
+          else:
+            st.info("Gösterilecek veri yok.")
+
+      with g_col2:
+        st.markdown("**Armadaş Süreç Durumu Proje Adedi**")
+        if not df_filtered.empty and "armadas_surec_adimi" in df_filtered.columns:
+          durum_counts = (
+              df_filtered["armadas_surec_adimi"].value_counts().reset_index()
+          )
+          durum_counts.columns = ["Durum", "Sayi"]
+          if not durum_counts.empty:
+            st.bar_chart(
+                durum_counts.set_index("Durum")["Sayi"], color="#3b82f6"
+            )
+          else:
+            st.info("Gösterilecek veri yok.")
+
+      st.markdown("---")
       st.subheader("📋 Rapor Tablosu ve Kaldırma / Silme Alanı")
       st.caption(
           "✏️ Hücreleri doğrudan düzenleyebilir veya istediğiniz kaydı"
@@ -1236,7 +1277,7 @@ elif sayfa == "Kullanıcı Onayları & İzinler":
                     int(i_kayit_ekle),
                     int(i_kayit_duzenle),
                     int(i_kayit_sil),
-                    int(i_usta_yonotim := int(i_usta_yonetim)),
+                    int(i_usta_yonetim),
                     int(i_rapor),
                     int(i_kullanici),
                     selected_user_id,
