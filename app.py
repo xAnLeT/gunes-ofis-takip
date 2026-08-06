@@ -117,19 +117,44 @@ def render_login() -> None:
     with middle:
         if LOGO_PATH.exists():
             st.image(str(LOGO_PATH), width=250)
-        with st.form("login_form"):
-            username = st.text_input("Kullanıcı adı", autocomplete="username")
-            password = st.text_input("Şifre", type="password", autocomplete="current-password")
-            submitted = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
-        if submitted:
-            user = st.session_state.users.get(username.strip().lower())
-            if user and password == user["password"]:
-                st.session_state.current_user = {"username": username.strip().lower(), **user}
-                st.rerun()
-            else:
-                st.error("Kullanıcı adı veya şifre hatalı.")
-        with st.expander("İlk kurulum demo hesapları"):
-            st.caption("Admin: admin / admin123 · Yönetici: yonetici / yonetici123 · Yardımcı: yardimci / yardimci123 · Personel: personel / personel123")
+        login_tab, register_tab = st.tabs(["Giriş Yap", "Kayıt Ol"])
+        with login_tab:
+            with st.form("login_form"):
+                username = st.text_input("Kullanıcı adı", autocomplete="username")
+                password = st.text_input("Şifre", type="password", autocomplete="current-password")
+                submitted = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
+            if submitted:
+                user = st.session_state.users.get(username.strip().lower())
+                if user and password == user["password"]:
+                    st.session_state.current_user = {"username": username.strip().lower(), **user}
+                    st.rerun()
+                else:
+                    st.error("Kullanıcı adı veya şifre hatalı.")
+            with st.expander("İlk kurulum demo hesapları"):
+                st.caption("Admin: admin / admin123 · Yönetici: yonetici / yonetici123 · Yardımcı: yardimci / yardimci123 · Personel: personel / personel123")
+        with register_tab:
+            st.caption("Yeni hesaplar Personel rolüyle açılır. Admin, Ayarlar alanından rolü güncelleyebilir.")
+            with st.form("register_form", clear_on_submit=True):
+                register_name = st.text_input("Ad soyad *", autocomplete="name")
+                register_username = st.text_input("Kullanıcı adı *", autocomplete="username")
+                register_password = st.text_input("Şifre *", type="password", autocomplete="new-password")
+                register_confirm = st.text_input("Şifre tekrar *", type="password", autocomplete="new-password")
+                registered = st.form_submit_button("Hesap Oluştur", type="primary", use_container_width=True)
+            if registered:
+                key = register_username.strip().lower()
+                if not register_name.strip() or not key or not register_password:
+                    st.error("Ad soyad, kullanıcı adı ve şifre zorunludur.")
+                elif len(key) < 3 or not re.fullmatch(r"[a-z0-9._-]+", key):
+                    st.error("Kullanıcı adı en az 3 karakter olmalı; yalnızca küçük harf, rakam, nokta, alt çizgi ve tire içerebilir.")
+                elif key in st.session_state.users:
+                    st.error("Bu kullanıcı adı zaten kullanılıyor.")
+                elif len(register_password) < 6:
+                    st.error("Şifre en az 6 karakter olmalı.")
+                elif register_password != register_confirm:
+                    st.error("Şifreler eşleşmiyor.")
+                else:
+                    st.session_state.users[key] = {"password": register_password, "role": "personel", "name": register_name.strip()}
+                    st.success("Hesabınız oluşturuldu. Giriş Yap sekmesinden giriş yapabilirsiniz.")
 
 
 def render_tv_dashboard() -> None:
@@ -296,16 +321,19 @@ def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
 
 
 if "projeler" not in st.session_state:
-    st.session_state.projeler = [
-        {"Tarih": "2026-06-01", "Ay": "2026-06", "Usta": "MEHMET BEKİROĞLU", "Proje": "Merkezi Sistem Tesisat", "Müşteri": "Ahmet Yılmaz", "Kolon": 2, "Ic_Tesisat": 3, "Durum": "Tamamlandı", "Tutar": 45000, "Tahsilat": 30000},
-        {"Tarih": "2026-06-05", "Ay": "2026-06", "Usta": "MARTES HİLMİ NOKAY", "Proje": "Kombi Montaj", "Müşteri": "Mehmet Demir", "Kolon": 1, "Ic_Tesisat": 2, "Durum": "Devam Ediyor", "Tutar": 22000, "Tahsilat": 7000},
-        {"Tarih": "2026-05-15", "Ay": "2026-05", "Usta": "MUSTAFA GÜL", "Proje": "Bireysel Doğalgaz", "Müşteri": "Ali Kaya", "Kolon": 1, "Ic_Tesisat": 1, "Durum": "Tamamlandı", "Tutar": 15000, "Tahsilat": 15000},
-    ]
+    # Uygulama boş başlar; proje, ciro, tahsilat ve usta kayıtlarını ofis ekler.
+    st.session_state.projeler = []
 
 if "users" not in st.session_state:
     st.session_state.users = DEFAULT_USERS.copy()
 if "ustalar" not in st.session_state:
     st.session_state.ustalar = DEFAULT_USTALAR.copy()
+# Bu sürüme geçildiğinde önceki örnek verileri bir kez temizler.
+# Sonraki sayfa yenilemelerinde kullanıcının eklediği kayıtlar korunur.
+if "clean_start_v1" not in st.session_state:
+    st.session_state.projeler = []
+    st.session_state.ustalar = []
+    st.session_state.clean_start_v1 = True
 # Eski sürümde yalnızca ad olarak kaydedilmiş ustaları yeni bilgi yapısına dönüştürür.
 st.session_state.ustalar = [
     master if isinstance(master, dict) else {"name": str(master), "number": "", "phone": ""}
