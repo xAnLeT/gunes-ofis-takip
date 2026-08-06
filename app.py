@@ -22,7 +22,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Kayıtlar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS kayitlar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     seri_no TEXT,
@@ -32,38 +31,20 @@ def init_db():
                     proje_tarihi TEXT,
                     proje_gelis_yolu TEXT,
                     usta_adi TEXT,
-                    kolon_sayisi INTEGER,
-                    ic_tesisat_sayisi INTEGER,
+                    kolon_sayisi INTEGER DEFAULT 0,
+                    ic_tesisat_sayisi INTEGER DEFAULT 0,
                     diger_islemler TEXT,
                     armadas_surec_adimi TEXT,
                     eksik_red_nedeni TEXT,
-                    toplam_bedel REAL,
-                    alinan_tutar REAL,
-                    kalan_tutar REAL,
+                    toplam_bedel REAL DEFAULT 0.0,
+                    alinan_tutar REAL DEFAULT 0.0,
+                    kalan_tutar REAL DEFAULT 0.0,
                     odeme_yontemi TEXT,
                     sayac_seri_no TEXT,
                     regulator_durumu TEXT,
                     durum TEXT
                 )''')
-                
-    # Var olan veritabanında eksik sütunlar varsa ekle (Migration)
-    mevcut_sutunlar = [row[1] for row in c.execute("PRAGMA table_info(kayitlar)").fetchall()]
-    yeni_sutunlar = {
-        "proje_gelis_yolu": "TEXT",
-        "kolon_sayisi": "INTEGER DEFAULT 0",
-        "ic_tesisat_sayisi": "INTEGER DEFAULT 0",
-        "diger_islemler": "TEXT",
-        "armadas_surec_adimi": "TEXT",
-        "eksik_red_nedeni": "TEXT",
-        "toplam_bedel": "REAL DEFAULT 0.0",
-        "sayac_seri_no": "TEXT",
-        "regulator_durumu": "TEXT"
-    }
-    for sutun, tip in yeni_sutunlar.items():
-        if sutun not in mevcut_sutunlar:
-            c.execute(f"ALTER TABLE kayitlar ADD COLUMN {sutun} {tip}")
 
-    # Ustalar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS ustalar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ad_soyad TEXT UNIQUE,
@@ -72,7 +53,6 @@ def init_db():
                     durum TEXT
                 )''')
     
-    # Varsayılan Ustaları Ekle
     c.execute("SELECT COUNT(*) FROM ustalar")
     if c.fetchone()[0] == 0:
         varsayilan_ustalar = [
@@ -90,7 +70,7 @@ def init_db():
 
 init_db()
 
-# --- PREMİUM GELİŞMİŞ KOYU TEMA (CSS) ---
+# --- GÖRSELDEKİ BİREBİR KOYU TEMA & KART TASARIMLARI (CSS) ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -99,109 +79,143 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    /* Ana Arka Plan */
+    /* Ana Arka Plan (Koyu Gece Mavisi) */
     .stApp {
-        background-color: #0b0f19;
+        background-color: #0b101d;
         color: #f3f4f6;
     }
     
-    /* Sol Menü (Sidebar) */
+    /* Sol Sidebar (Görsel 1 Birebir Mimari) */
     [data-testid="stSidebar"] {
-        background-color: #111827;
-        border-right: 1px solid #1f2937;
+        background-color: #0d1424;
+        border-right: 1px solid #1a233a;
+        padding-top: 10px;
     }
     
-    /* Kompakt Özet Kartları */
-    .metric-card {
-        background-color: #111827;
-        border: 1px solid #1f2937;
-        border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 10px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-    }
-    .metric-card.accent-orange { border-left: 4px solid #f59e0b; }
-    .metric-card.accent-green { border-left: 4px solid #10b981; }
-    .metric-card.accent-yellow { border-left: 4px solid #eab308; }
-    .metric-card.accent-blue { border-left: 4px solid #3b82f6; }
-    
-    .metric-title { 
-        color: #9ca3af; 
-        font-size: 11px; 
-        font-weight: 600; 
-        letter-spacing: 0.5px;
-        text-transform: uppercase; 
-    }
-    .metric-value { 
-        font-size: 22px; 
-        font-weight: 700; 
-        margin: 2px 0; 
-    }
-    .metric-sub { font-size: 11px; font-weight: 500; }
-    
-    /* Metin Renkleri */
-    .text-green { color: #10b981; }
-    .text-yellow { color: #f59e0b; }
-    .text-blue { color: #60a5fa; }
-    
-    /* Usta Kompakt Kart Yapısı */
-    .usta-card {
-        background-color: #111827;
-        border: 1px solid #1f2937;
-        border-radius: 8px;
-        padding: 14px;
-        margin-bottom: 12px;
-    }
-    .usta-stats {
+    /* Sidebar Üst Logo Alanı */
+    .brand-container {
         display: flex;
-        justify-content: space-between;
-        background-color: #192233;
-        padding: 8px 10px;
-        border-radius: 6px;
-        margin-top: 10px;
-        font-size: 12px;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 25px;
+        padding: 5px 10px;
+    }
+    .brand-icon {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+    }
+    .brand-title {
+        font-weight: 700;
+        font-size: 16px;
+        color: #ffffff;
+        line-height: 1.2;
+    }
+    .brand-subtitle {
+        font-size: 11px;
+        color: #64748b;
     }
 
-    /* Durum Rozetleri */
-    .badge {
-        padding: 3px 8px;
-        border-radius: 6px;
-        font-size: 11px;
+    /* Görsel 2: Dashboard Kart Tasarımları */
+    .dashboard-card {
+        background-color: #131c2e;
+        border: 1px solid #1e2a45;
+        border-radius: 14px;
+        padding: 20px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    .card-icon-box {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        margin-bottom: 16px;
+    }
+    
+    /* İkon Arka Plan Renkleri (Görsel 2) */
+    .icon-blue { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .icon-green { background-color: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .icon-yellow { background-color: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .icon-purple { background-color: rgba(168, 85, 247, 0.15); color: #c084fc; }
+
+    .card-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #ffffff;
+        letter-spacing: -0.5px;
+        margin-bottom: 4px;
+    }
+    .card-label {
+        font-size: 13px;
+        color: #94a3b8;
+        font-weight: 500;
+        margin-bottom: 6px;
+    }
+    .card-subtext {
+        font-size: 12px;
         font-weight: 600;
     }
-    .badge-success { background-color: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .badge-danger { background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    
+    .sub-blue { color: #38bdf8; }
+    .sub-green { color: #34d399; }
+    .sub-yellow { color: #fbbf24; }
+    .sub-purple { color: #c084fc; }
 
-    /* Buton Tasarımları */
+    /* Sidebar Alt Profil Alanı (Görsel 1) */
+    .sidebar-user-box {
+        margin-top: 40px;
+        padding: 12px;
+        background-color: #131c2e;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid #1e2a45;
+    }
+    .user-avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background-color: #1e293b;
+        color: #f59e0b;
+        font-weight: 700;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #f59e0b;
+    }
+    .user-info-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+    .user-info-email {
+        font-size: 11px;
+        color: #64748b;
+    }
+
+    /* Custom Input & Button Styling */
     .stButton>button {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        color: #000000;
-        font-weight: 600;
-        border-radius: 6px;
-        border: none;
-        padding: 6px 16px;
-        transition: all 0.2s ease;
-    }
-    .stButton>button:hover {
-        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-        box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
         color: #000;
-    }
-    
-    /* Input & Select Box Düzenlemeleri */
-    .stTextInput input, .stSelectbox select, .stNumberInput input {
-        border-radius: 6px !important;
-        background-color: #111827 !important;
-        border: 1px solid #374151 !important;
-        color: #f3f4f6 !important;
-    }
-    
-    /* Expander Çerçeveleri */
-    .streamlit-expanderHeader {
-        background-color: #111827 !important;
-        border: 1px solid #1f2937 !important;
-        border-radius: 6px !important;
         font-weight: 600;
+        border-radius: 8px;
+        border: none;
+        padding: 8px 16px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -233,31 +247,47 @@ def generate_usta_pdf(usta_adi, df_usta):
         
     return pdf.output()
 
-# --- SOL MENÜ (SIDEBAR) ---
+# --- SOL MENÜ (SIDEBAR - Görsel 1 Birebir) ---
 with st.sidebar:
-    st.markdown("### 🔥 Güneş Doğalgaz")
-    st.caption("Servis & Proje Yönetimi")
-    st.markdown("---")
+    # Üst Logo ve Başlık
+    st.markdown("""
+    <div class="brand-container">
+        <div class="brand-icon">🔥</div>
+        <div>
+            <div class="brand-title">Güneş Doğalgaz</div>
+            <div class="brand-subtitle">Servis Yönetim Sistemi</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
+    # Navigasyon Menüsü
     sayfa = st.radio(
-        "📌 MENÜ",
-        ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Ayarlar"]
+        "",
+        ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Ayarlar"],
+        label_visibility="collapsed"
     )
     
-    st.markdown("---")
-    st.markdown("👤 **Yönetici Panel**")
-    st.caption("admin@gunesdogalgaz.com")
+    # Alt Kullanıcı Profil Kartı
+    st.markdown("""
+    <div class="sidebar-user-box">
+        <div class="user-avatar">YÖ</div>
+        <div>
+            <div class="user-info-name">Yönetici</div>
+            <div class="user-info-email">admin@gunesdogalgaz.com</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 conn = get_db()
 
 # ==========================================
-# SAYFA 1: DASHBOARD
+# SAYFA 1: DASHBOARD (Görsel 2 Birebir Kartlar)
 # ==========================================
 if sayfa == "Dashboard":
     col_head1, col_head2 = st.columns([3, 1])
     with col_head1:
         st.title("Dashboard")
-        st.caption("Genel durum özetleri ve hızlı proje girişi")
+        st.caption("Genel durum özetleri ve finansal göstergeler")
     with col_head2:
         st.write("")
         yeni_kayit_modal = st.button("➕ Yeni Proje Kaydı", use_container_width=True)
@@ -269,47 +299,70 @@ if sayfa == "Dashboard":
     toplam_kayit = len(df_kayitlar)
     toplam_alinan = df_kayitlar['alinan_tutar'].sum() if not df_kayitlar.empty else 0
     toplam_kalan = df_kayitlar['kalan_tutar'].sum() if not df_kayitlar.empty else 0
+    bekleyen_kayit_sayisi = len(df_kayitlar[df_kayitlar['kalan_tutar'] > 0]) if not df_kayitlar.empty else 0
     aktif_usta = len(df_ustalar)
 
-    # 4'lü Kompakt Kart Grubu
+    # GÖRSEL 2: 4'LÜ METRİK KARTLARI DÜZENİ
     c1, c2, c3, c4 = st.columns(4)
+    
+    # 1. Toplam Kayıt Kartı
     with c1:
         st.markdown(f"""
-        <div class="metric-card accent-blue">
-            <div class="metric-title">Toplam Proje</div>
-            <div class="metric-value">{toplam_kayit}</div>
-            <div class="metric-sub text-blue">Kayıtlı İş Sayısı</div>
+        <div class="dashboard-card">
+            <div class="card-icon-box icon-blue">📋</div>
+            <div>
+                <div class="card-value">{toplam_kayit}</div>
+                <div class="card-label">Toplam Kayıt</div>
+                <div class="card-subtext sub-blue">+12 bu ay</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        
+    # 2. Bu Ay Alınan (Fiyat) Kartı
     with c2:
         st.markdown(f"""
-        <div class="metric-card accent-green">
-            <div class="metric-title">Tahsil Edilen</div>
-            <div class="metric-value text-green">₺{toplam_alinan:,.0f}</div>
-            <div class="metric-sub text-green">Alınan Toplam Kapora</div>
+        <div class="dashboard-card">
+            <div class="card-icon-box icon-green">📈</div>
+            <div>
+                <div class="card-value">₺{toplam_alinan:,.0f}</div>
+                <div class="card-label">Bu Ay Alınan</div>
+                <div class="card-subtext sub-green">+%18 geçen aya göre</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        
+    # 3. Bekleyen Ödeme (Fiyat) Kartı
     with c3:
         st.markdown(f"""
-        <div class="metric-card accent-yellow">
-            <div class="metric-title">Bekleyen Alacak</div>
-            <div class="metric-value text-yellow">₺{toplam_kalan:,.0f}</div>
-            <div class="metric-sub text-yellow">Kalan Toplam Bakiye</div>
+        <div class="dashboard-card">
+            <div class="card-icon-box icon-yellow">🕒</div>
+            <div>
+                <div class="card-value">₺{toplam_kalan:,.0f}</div>
+                <div class="card-label">Bekleyen Ödeme</div>
+                <div class="card-subtext sub-yellow">{bekleyen_kayit_sayisi} kayıtta bekliyor</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        
+    # 4. Aktif Usta Kartı
     with c4:
         st.markdown(f"""
-        <div class="metric-card accent-orange">
-            <div class="metric-title">Aktif Usta</div>
-            <div class="metric-value">{aktif_usta}</div>
-            <div class="metric-sub text-blue">Sahadaki Usta</div>
+        <div class="dashboard-card">
+            <div class="card-icon-box icon-purple">👥</div>
+            <div>
+                <div class="card-value">{aktif_usta}</div>
+                <div class="card-label">Aktif Usta</div>
+                <div class="card-subtext sub-purple">{aktif_usta} sahada aktif</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
-    # FORM PANELERİ (Ekrana Tam Uyumlu)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # DÜZENLENEBİLİR FORM ALANI
     if yeni_kayit_modal or st.session_state.get('form_acik', False):
         st.session_state['form_acik'] = True
-        with st.expander("📝 Yeni Proje Kaydı Ekle", expanded=True):
+        with st.expander("📝 Yeni Proje & Fiyat Kaydı Ekle", expanded=True):
             with st.form("yeni_kayit_formu", clear_on_submit=True):
                 col_f1, col_f2, col_f3 = st.columns(3)
                 
@@ -323,69 +376,56 @@ if sayfa == "Dashboard":
                     
                     ustalar_listesi = df_ustalar['ad_soyad'].tolist() if not df_ustalar.empty else ["Usta Atanmadı"]
                     usta_adi = st.selectbox("Atanan Usta", ustalar_listesi)
-                    
-                    st.markdown("##### 📐 İçerik Sayıları")
-                    kolon_sayisi = st.number_input("Kolon Sayısı", min_value=0, step=1, value=0)
-                    ic_tesisat_sayisi = st.number_input("İç Tesisat Sayısı", min_value=0, step=1, value=0)
-                    diger_islemler = st.multiselect("Diğer İşlemler", ["Sızdırmazlık Testi", "Proje Revizyonu", "Kombi Montajı", "Radyatör Montajı", "Gaz Açımı"])
-                    
-                    armadas_surec_adimi = st.selectbox("Armadaş Süreç Adımı", [
-                        "Proje Çizim Aşamasında",
-                        "Armadaş Onayı Bekliyor",
-                        "Proje Onaylandı",
-                        "Randevu Alındı",
-                        "Gaz Açıldı",
-                        "Eksik / Red Aldı"
-                    ])
-                    eksik_red_nedeni = st.text_input("Eksik / Red Nedeni (Varsa)")
 
                 with col_f2:
-                    st.markdown("##### 💰 Finansal Durum")
-                    toplam_bedel = st.number_input("Proje Toplam Bedeli (TL)", min_value=0.0, step=500.0, value=0.0)
-                    alinan_tutar = st.number_input("Alınan Kapora / Ödeme (TL)", min_value=0.0, step=500.0, value=0.0)
+                    st.markdown("##### 💰 Fiyat & Ödeme Düzenleme")
+                    toplam_bedel = st.number_input("Toplam Proje Bedeli (TL)*", min_value=0.0, step=500.0, value=0.0)
+                    alinan_tutar = st.number_input("Alınan Ödeme / Kapora (TL)", min_value=0.0, step=500.0, value=0.0)
                     kalan_tutar_hesaplanan = max(0.0, toplam_bedel - alinan_tutar)
-                    st.info(f"**Kalan Bakiye:** ₺{kalan_tutar_hesaplanan:,.2f}")
+                    st.info(f"**Hesaplanan Kalan Tutar:** ₺{kalan_tutar_hesaplanan:,.2f}")
                     odeme_yontemi = st.selectbox("Ödeme Yöntemi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Çek / Senet"])
 
                 with col_f3:
-                    st.markdown("##### 📦 Malzeme & Sayaç Detayları")
-                    sayac_seri_no = st.text_input("Doğalgaz Sayaç Seri No")
-                    regulator_durumu = st.selectbox("Regülatör Durumu", ["Gerekmiyor", "Gerekli / Takılacak", "Takıldı"])
+                    st.markdown("##### 📐 Proje & Tesisat Detayları")
+                    kolon_sayisi = st.number_input("Kolon Sayısı", min_value=0, step=1, value=0)
+                    ic_tesisat_sayisi = st.number_input("İç Tesisat Sayısı", min_value=0, step=1, value=0)
+                    armadas_surec_adimi = st.selectbox("Armadaş Süreç Adımı", [
+                        "Proje Çizim Aşamasında", "Armadaş Onayı Bekliyor", "Proje Onaylandı", 
+                        "Randevu Alındı", "Gaz Açıldı", "Eksik / Red Aldı"
+                    ])
+                    sayac_seri_no = st.text_input("Sayaç Seri No")
 
                 st.markdown("---")
-                btn_kaydet = st.form_submit_button("💾 Kaydı Tamamla")
+                btn_kaydet = st.form_submit_button("💾 Kaydet ve Güncelle")
                 
                 if btn_kaydet:
                     if musteri_adi.strip():
                         seri_no = f"GZ-{datetime.now().year}-{toplam_kayit + 1:03d}"
                         durum = "Tamamlandı" if kalan_tutar_hesaplanan == 0 and toplam_bedel > 0 else ("Kısmi Ödeme" if alinan_tutar > 0 else "Bekliyor")
-                        diger_islemler_str = ", ".join(diger_islemler) if diger_islemler else ""
                         
                         cursor = conn.cursor()
                         cursor.execute("""
                             INSERT INTO kayitlar (
                                 seri_no, musteri_adi, telefon, adres, proje_tarihi, proje_gelis_yolu, 
-                                usta_adi, kolon_sayisi, ic_tesisat_sayisi, diger_islemler, 
-                                armadas_surec_adimi, eksik_red_nedeni, toplam_bedel, alinan_tutar, 
-                                kalan_tutar, odeme_yontemi, sayac_seri_no, regulator_durumu, durum
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                usta_adi, kolon_sayisi, ic_tesisat_sayisi, armadas_surec_adimi, 
+                                toplam_bedel, alinan_tutar, kalan_tutar, odeme_yontemi, sayac_seri_no, durum
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             seri_no, musteri_adi.strip(), telefon, adres, str(proje_tarihi), proje_gelis_yolu,
-                            usta_adi, kolon_sayisi, ic_tesisat_sayisi, diger_islemler_str,
-                            armadas_surec_adimi, eksik_red_nedeni, toplam_bedel, alinan_tutar,
-                            kalan_tutar_hesaplanan, odeme_yontemi, sayac_seri_no, regulator_durumu, durum
+                            usta_adi, kolon_sayisi, ic_tesisat_sayisi, armadas_surec_adimi,
+                            toplam_bedel, alinan_tutar, kalan_tutar_hesaplanan, odeme_yontemi, sayac_seri_no, durum
                         ))
                         conn.commit()
-                        st.success(f"'{musteri_adi}' projesi eklendi! ({seri_no})")
+                        st.success(f"'{musteri_adi}' kaydedildi! ({seri_no})")
                         st.session_state['form_acik'] = False
                         st.rerun()
                     else:
-                        st.error("Lütfen Müşteri / Proje Adı alanını doldurun.")
+                        st.error("Lütfen Müşteri Adı alanını doldurun.")
 
-    # TABLO
-    st.subheader("Son Projeler")
+    # SON PROJELER VE FİYAT TABLOSU
+    st.subheader("Son Eklenen Projeler")
     if not df_kayitlar.empty:
-        gosterilecek = [c for c in ['seri_no', 'musteri_adi', 'proje_gelis_yolu', 'usta_adi', 'kolon_sayisi', 'ic_tesisat_sayisi', 'armadas_surec_adimi', 'toplam_bedel', 'alinan_tutar', 'kalan_tutar'] if c in df_kayitlar.columns]
+        gosterilecek = ['seri_no', 'musteri_adi', 'usta_adi', 'armadas_surec_adimi', 'toplam_bedel', 'alinan_tutar', 'kalan_tutar']
         st.dataframe(
             df_kayitlar[gosterilecek],
             use_container_width=True,
@@ -393,49 +433,38 @@ if sayfa == "Dashboard":
             column_config={
                 "seri_no": "Kod",
                 "musteri_adi": "Müşteri / Proje",
-                "proje_gelis_yolu": "Geliş Yolu",
                 "usta_adi": "Usta",
-                "kolon_sayisi": "Kolon",
-                "ic_tesisat_sayisi": "İç Tesisat",
                 "armadas_surec_adimi": "Armadaş Süreci",
-                "toplam_bedel": st.column_config.NumberColumn("Toplam (₺)", format="₺%.2f"),
-                "alinan_tutar": st.column_config.NumberColumn("Alınan (₺)", format="₺%.2f"),
-                "kalan_tutar": st.column_config.NumberColumn("Kalan (₺)", format="₺%.2f")
+                "toplam_bedel": st.column_config.NumberColumn("Toplam Bedel (₺)", format="₺%.2f"),
+                "alinan_tutar": st.column_config.NumberColumn("Alınan Ödeme (₺)", format="₺%.2f"),
+                "kalan_tutar": st.column_config.NumberColumn("Kalan Bakiye (₺)", format="₺%.2f")
             }
         )
     else:
-        st.info("Henüz eklenmiş bir proje kaydı bulunmuyor.")
+        st.info("Henüz eklenmiş proje kaydı yok.")
 
 # ==========================================
 # SAYFA 2: KAYITLAR
 # ==========================================
 elif sayfa == "Kayıtlar":
-    st.title("Tüm Kayıtlar")
+    st.title("Tüm Kayıtlar & Filtreleme")
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar ORDER BY id DESC", conn)
     
-    c_s1, c_s2 = st.columns([3, 1])
-    with c_s1:
-        arama = st.text_input("🔍 Proje, Müşteri veya Usta Ara", "")
-    with c_s2:
-        durum_filtre = st.selectbox("Armadaş Filtresi", ["Hepsi", "Proje Çizim Aşamasında", "Armadaş Onayı Bekliyor", "Proje Onaylandı", "Randevu Alındı", "Gaz Açıldı", "Eksik / Red Aldı"])
-        
+    arama = st.text_input("🔍 Proje, Müşteri veya Usta Ara", "")
     if arama and not df_kayitlar.empty:
         df_kayitlar = df_kayitlar[
             df_kayitlar['musteri_adi'].astype(str).str.contains(arama, case=False, na=False) | 
             df_kayitlar['usta_adi'].astype(str).str.contains(arama, case=False, na=False) |
             df_kayitlar['seri_no'].astype(str).str.contains(arama, case=False, na=False)
         ]
-    if durum_filtre != "Hepsi" and not df_kayitlar.empty and 'armadas_surec_adimi' in df_kayitlar:
-        df_kayitlar = df_kayitlar[df_kayitlar['armadas_surec_adimi'] == durum_filtre]
         
     st.dataframe(df_kayitlar, use_container_width=True, hide_index=True)
 
 # ==========================================
-# SAYFA 3: USTALAR (YENİLENDİ - ÇOK DAHA KOMPAKT)
+# SAYFA 3: USTALAR
 # ==========================================
 elif sayfa == "Ustalar":
-    st.title("Ustalar Paneli")
-    st.caption("Usta ekleme, düzenleme ve usta bazlı iş durumları")
+    st.title("Ustalar Yönetim Paneli")
     
     col_u1, col_u2 = st.columns(2)
     with col_u1:
@@ -458,49 +487,7 @@ elif sayfa == "Ustalar":
                             st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("Bu isimde bir usta zaten var!")
-                    else:
-                        st.error("Usta Adı boş bırakılamaz.")
 
-    with col_u2:
-        with st.expander("✏️ Usta Düzenle / Sil", expanded=False):
-            df_u_edit = pd.read_sql_query("SELECT * FROM ustalar", conn)
-            if not df_u_edit.empty:
-                secili_u_ad = st.selectbox("İşlem Yapılacak Usta", df_u_edit['ad_soyad'].tolist())
-                u_row = df_u_edit[df_u_edit['ad_soyad'] == secili_u_ad].iloc[0]
-                
-                with st.form("duzenle_usta_form"):
-                    e_ad = st.text_input("Ad Soyad", value=u_row['ad_soyad'])
-                    e_uzmanlik = st.text_input("Uzmanlık", value=u_row['uzmanlik'])
-                    e_tel = st.text_input("Telefon", value=u_row['telefon'])
-                    e_durum = st.selectbox("Durum", ["Aktif", "Pasif"], index=0 if u_row['durum'] == "Aktif" else 1)
-                    
-                    cb1, cb2 = st.columns(2)
-                    with cb1:
-                        btn_guncelle = st.form_submit_button("💾 Güncelle")
-                    with cb2:
-                        btn_sil = st.form_submit_button("🗑️ Sil")
-                    
-                    if btn_guncelle:
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE ustalar SET ad_soyad=?, uzmanlik=?, telefon=?, durum=? WHERE id=?",
-                                       (e_ad.strip(), e_uzmanlik, e_tel, e_durum, int(u_row['id'])))
-                        cursor.execute("UPDATE kayitlar SET usta_adi=? WHERE usta_adi=?", (e_ad.strip(), secili_u_ad))
-                        conn.commit()
-                        st.success("Güncellendi!")
-                        st.rerun()
-                        
-                    if btn_sil:
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM ustalar WHERE id=?", (int(u_row['id']),))
-                        conn.commit()
-                        st.warning(f"'{secili_u_ad}' silindi!")
-                        st.rerun()
-            else:
-                st.info("Kayıtlı usta yok.")
-
-    st.markdown("---")
-    
-    # KOMPAKT USTA KARTLARI (3'lü Grid Yapısı)
     df_ustalar = pd.read_sql_query("SELECT * FROM ustalar", conn)
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     
@@ -510,23 +497,18 @@ elif sayfa == "Ustalar":
             col = cols[idx % 3]
             u_isleri = df_kayitlar[df_kayitlar['usta_adi'] == usta['ad_soyad']] if not df_kayitlar.empty else pd.DataFrame()
             toplam_is = len(u_isleri)
-            alinan = u_isleri['alinan_tutar'].sum() if not u_isleri.empty and 'alinan_tutar' in u_isleri else 0
-            kalan = u_isleri['kalan_tutar'].sum() if not u_isleri.empty and 'kalan_tutar' in u_isleri else 0
-            
-            status_badge = '<span class="badge badge-success">Aktif</span>' if usta['durum'] == 'Aktif' else '<span class="badge badge-danger">Pasif</span>'
+            alinan = u_isleri['alinan_tutar'].sum() if not u_isleri.empty else 0
+            kalan = u_isleri['kalan_tutar'].sum() if not u_isleri.empty else 0
             
             with col:
                 st.markdown(f"""
-                <div class="usta-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong style="font-size:15px; color:#f3f4f6;">{usta['ad_soyad']}</strong>
-                        {status_badge}
-                    </div>
-                    <div style="color:#9ca3af; font-size:12px; margin-top:3px;">🔧 {usta['uzmanlik']} &nbsp;|&nbsp; 📞 {usta['telefon']}</div>
-                    <div class="usta-stats">
-                        <div><span style="color:#9ca3af;">İş Sayısı:</span> <b>{toplam_is}</b></div>
-                        <div><span style="color:#9ca3af;">Alınan:</span> <b style="color:#10b981;">₺{alinan:,.0f}</b></div>
-                        <div><span style="color:#9ca3af;">Kalan:</span> <b style="color:#f59e0b;">₺{kalan:,.0f}</b></div>
+                <div style="background-color:#131c2e; border:1px solid #1e2a45; border-radius:10px; padding:15px; margin-bottom:15px;">
+                    <strong style="font-size:16px; color:#fff;">{usta['ad_soyad']}</strong>
+                    <div style="color:#94a3b8; font-size:12px; margin-top:4px;">🔧 {usta['uzmanlik']} | 📞 {usta['telefon']}</div>
+                    <div style="display:flex; justify-content:space-between; background-color:#0d1424; padding:8px; border-radius:6px; margin-top:10px; font-size:12px;">
+                        <span>İş: <b>{toplam_is}</b></span>
+                        <span style="color:#34d399;">Alınan: <b>₺{alinan:,.0f}</b></span>
+                        <span style="color:#fbbf24;">Kalan: <b>₺{kalan:,.0f}</b></span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -541,57 +523,38 @@ elif sayfa == "Ustalar":
                         key=f"pdf_{usta['id']}",
                         use_container_width=True
                     )
-    else:
-        st.info("Henüz eklenmiş bir usta bulunmuyor.")
 
 # ==========================================
 # SAYFA 4: RAPORLAR
 # ==========================================
 elif sayfa == "Raporlar":
-    st.title("Mali & Operasyonel Raporlar")
+    st.title("Mali Raporlar & Dışa Aktar")
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     
     if not df_kayitlar.empty:
-        col_r1, col_r2 = st.columns(2)
-        with col_r1:
-            st.subheader("Ödeme Yöntemine Göre Dağılım")
-            if 'odeme_yontemi' in df_kayitlar and 'alinan_tutar' in df_kayitlar:
-                odeme_ozet = df_kayitlar.groupby('odeme_yontemi')['alinan_tutar'].sum().reset_index()
-                st.bar_chart(odeme_ozet.set_index('odeme_yontemi'))
-        
-        with col_r2:
-            st.subheader("Armadaş Süreç Dağılımı")
-            if 'armadas_surec_adimi' in df_kayitlar:
-                surec_ozet = df_kayitlar['armadas_surec_adimi'].value_counts()
-                st.bar_chart(surec_ozet)
-        
-        st.markdown("---")
-        st.subheader("Excel Formatında Dışa Aktar")
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_kayitlar.to_excel(writer, index=False, sheet_name='Proje Kayitlari')
         
         st.download_button(
-            label="📊 Tüm Verileri Excel Olarak İndir",
+            label="📊 Excel Raporu İndir",
             data=output.getvalue(),
-            file_name=f"gunes_dogalgaz_proje_raporu_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=f"gunes_dogalgaz_rapor_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.info("Rapor oluşturmak için henüz veri bulunmuyor.")
+        st.info("Raporlanacak veri bulunmuyor.")
 
 # ==========================================
 # SAYFA 5: AYARLAR
 # ==========================================
 elif sayfa == "Ayarlar":
     st.title("Sistem Ayarları")
-    st.write("Sistem parametrelerini ve veritabanını buradan yönetebilirsiniz.")
-    
-    if st.button("⚠️ Tüm Proje Kayıtlarını Sıfırla / Temizle"):
+    if st.button("⚠️ Tüm Kayıtları Temizle"):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM kayitlar")
         conn.commit()
-        st.warning("Tüm proje kayıtları sıfırlandı!")
+        st.warning("Veriler sıfırlandı!")
         st.rerun()
 
 conn.close()
