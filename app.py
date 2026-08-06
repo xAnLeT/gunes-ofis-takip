@@ -64,21 +64,26 @@ def init_db():
                     durum TEXT
                 )''')
     
-    # --- OTOMATİK VERİTABANI MİGRASYONU (HATA ENGELLECİ) ---
+    # --- OTOMATİK VERİTABANI MİGRASYONU VE DÜZELTME ---
     c.execute("PRAGMA table_info(kullanicilar)")
     kullanici_sutunlar = [col[1] for col in c.fetchall()]
     if 'telefon' not in kullanici_sutunlar:
         c.execute("ALTER TABLE kullanicilar ADD COLUMN telefon TEXT DEFAULT ''")
     if 'durum' not in kullanici_sutunlar:
         c.execute("ALTER TABLE kullanicilar ADD COLUMN durum TEXT DEFAULT 'Aktif'")
+    if 'rol' not in kullanici_sutunlar:
+        c.execute("ALTER TABLE kullanicilar ADD COLUMN rol TEXT DEFAULT 'Personel'")
 
-    # Varsayılan Admin Hesabı
+    # Admin Hesabını Oluştur / Yetkisini Onar
     c.execute("SELECT COUNT(*) FROM kullanicilar WHERE kullanici_adi = 'admin'")
     if c.fetchone()[0] == 0:
         c.execute("""
             INSERT INTO kullanicilar (kullanici_adi, sifre, ad_soyad, telefon, rol, durum) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, ("admin", "1234", "Yönetici Anıl", "05000000000", "Yönetici", "Aktif"))
+            VALUES ('admin', '1234', 'Yönetici Anıl', '05000000000', 'Yönetici', 'Aktif')
+        """)
+    else:
+        # Varolan admin hesabının rolünü ve durumunu kesin olarak düzelt
+        c.execute("UPDATE kullanicilar SET rol='Yönetici', durum='Aktif' WHERE kullanici_adi='admin'")
         
     c.execute("SELECT COUNT(*) FROM ustalar")
     if c.fetchone()[0] == 0:
@@ -201,22 +206,22 @@ if not st.session_state['logged_in']:
                 
                 if btn_login:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT * FROM kullanicilar WHERE kullanici_adi = ? AND sifre = ?", (kullanici_adi.strip(), sifre.strip()))
+                    cursor.execute("SELECT id, kullanici_adi, sifre, ad_soyad, telefon, rol, durum FROM kullanicilar WHERE kullanici_adi = ? AND sifre = ?", (kullanici_adi.strip(), sifre.strip()))
                     user = cursor.fetchone()
                     if user:
-                        # [0]id, [1]kullanici_adi, [2]sifre, [3]ad_soyad, [4]telefon, [5]rol, [6]durum
-                        if user[6] != "Aktif":
+                        u_id, u_kadi, u_sifre, u_ad, u_tel, u_rol, u_durum = user
+                        if u_durum != "Aktif":
                             st.error("⚠️ Hesabınız henüz yönetici tarafından onaylanmamıştır veya pasife alınmıştır.")
                         else:
                             st.session_state['logged_in'] = True
                             st.session_state['user_info'] = {
-                                "id": user[0],
-                                "kullanici_adi": user[1],
-                                "ad_soyad": user[3],
-                                "telefon": user[4],
-                                "rol": user[5]
+                                "id": u_id,
+                                "kullanici_adi": u_kadi,
+                                "ad_soyad": u_ad,
+                                "telefon": u_tel,
+                                "rol": u_rol
                             }
-                            st.success(f"Hoş geldiniz, {user[3]}!")
+                            st.success(f"Hoş geldiniz, {u_ad}!")
                             st.rerun()
                     else:
                         st.error("Kullanıcı adı veya şifre hatalı!")
@@ -261,7 +266,7 @@ if not st.session_state['logged_in']:
 # SOL MENÜ (SIDEBAR) & OTURUM KARTI
 # ==========================================
 user_info = st.session_state['user_info']
-is_admin_or_assistant = user_info['rol'] in ["Yönetici", "Yönetici Yardımcısı"]
+is_admin_or_assistant = user_info and str(user_info.get('rol', '')).strip() in ["Yönetici", "Yönetici Yardımcısı"]
 
 with st.sidebar:
     st.markdown("""
@@ -465,20 +470,17 @@ elif sayfa == "Ustalar":
             st.info("Kayıtlı usta bulunamadı.")
 
 # ==========================================
-# SAYFA 4: RAPORLAR VE ZAMAN BAZLI ANALİZLER (YENİ EKLEME)
+# SAYFA 4: RAPORLAR VE ANALİZ
 # ==========================================
 elif sayfa == "Raporlar & Analiz":
     st.title("📊 Mali & Dönemsel Raporlama")
-    
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     
     if df_kayitlar.empty:
         st.info("Raporlama yapılacak henüz bir proje kaydı bulunmuyor.")
     else:
-        # Tarih formatını pandas datetime'a çevir
         df_kayitlar['proje_tarihi_dt'] = pd.to_datetime(df_kayitlar['proje_tarihi'], errors='coerce')
         
-        # Filtre Seçenekleri
         col_r1, col_r2 = st.columns([2, 2])
         with col_r1:
             zaman_filtresi = st.selectbox(
@@ -505,7 +507,6 @@ elif sayfa == "Raporlar & Analiz":
             baslangic_tarihi = pd.to_datetime(df_kayitlar['proje_tarihi_dt']).min().date()
             bitis_tarihi = bugun
 
-        # Filtre Uygulama
         df_filtered = df_kayitlar[
             (df_kayitlar['proje_tarihi_dt'].dt.date >= baslangic_tarihi) & 
             (df_kayitlar['proje_tarihi_dt'].dt.date <= bitis_tarihi)
@@ -513,7 +514,6 @@ elif sayfa == "Raporlar & Analiz":
 
         st.markdown("---")
         
-        # Özet Metrik Kartları
         m1, m2, m3, m4 = st.columns(4)
         r_proje_sayisi = len(df_filtered)
         r_toplam_bedel = df_filtered['toplam_bedel'].sum()
@@ -531,9 +531,7 @@ elif sayfa == "Raporlar & Analiz":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Görsel Grafikler & Detaylar
         col_g1, col_g2 = st.columns([2, 1])
-        
         with col_g1:
             st.subheader("📈 Günlük / Dönemsel Ciro Trendi")
             if not df_filtered.empty:
@@ -553,7 +551,6 @@ elif sayfa == "Raporlar & Analiz":
         st.subheader("📋 Seçilen Döneme Ait Proje Listesi")
         st.dataframe(df_filtered[['seri_no', 'proje_tarihi', 'musteri_adi', 'usta_adi', 'toplam_bedel', 'alinan_tutar', 'kalan_tutar', 'armadas_surec_adimi']], use_container_width=True, hide_index=True)
 
-        # Excel İndirme Butonları
         st.markdown("---")
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -568,7 +565,7 @@ elif sayfa == "Raporlar & Analiz":
         )
 
 # ==========================================
-# SAYFA 5: KULLANICI ONAYLARI VE İZİN AYARLARI
+# SAYFA 5: KULLANICI ONAYLARI VE İZİN AYARLARI (YENİLENDİ)
 # ==========================================
 elif sayfa == "Kullanıcı Onayları & Ayarlar":
     st.title("👥 Kullanıcı Yetki & Onay Yönetimi")
@@ -576,49 +573,85 @@ elif sayfa == "Kullanıcı Onayları & Ayarlar":
     
     if is_admin_or_assistant:
         st.markdown("---")
-        df_kullanicilar = pd.read_sql_query("SELECT id, kullanici_adi, ad_soyad, telefon, rol, durum FROM kullanicilar", conn)
         
-        st.subheader("📋 Kayıtlı Kullanıcılar ve İzinler")
+        tab_onay, tab_tum_kullanicilar = st.tabs(["⏳ Onay Bekleyen Üyeler", "📋 Tüm Kullanıcılar & İzinler"])
         
-        for idx, k_user in df_kullanicilar.iterrows():
-            is_self = k_user['kullanici_adi'] == user_info['kullanici_adi']
+        # TAB 1: ONAY BEKLEYENLER (TEK TIKLA ONAYLAMA)
+        with tab_onay:
+            df_bekleyenler = pd.read_sql_query("SELECT id, kullanici_adi, ad_soyad, telefon, rol, durum FROM kullanicilar WHERE durum='Onay Bekliyor'", conn)
             
-            with st.expander(f"👤 {k_user['ad_soyad']} (@{k_user['kullanici_adi']}) - Rol: {k_user['rol']} | Durum: {k_user['durum']}"):
-                with st.form(key=f"edit_user_form_{k_user['id']}"):
-                    col_u1, col_u2, col_u3 = st.columns(3)
-                    
-                    with col_u1:
-                        st.write(f"**Telefon:** {k_user['telefon']}")
-                        st.write(f"**Kullanıcı Adı:** {k_user['kullanici_adi']}")
-                    
-                    with col_u2:
-                        rol_index = 0 if k_user['rol'] == "Yönetici" else (1 if k_user['rol'] == "Yönetici Yardımcısı" else 2)
-                        yeni_rol = st.selectbox("Atanan Rol", ["Yönetici", "Yönetici Yardımcısı", "Personel"], index=rol_index, disabled=is_self)
-                        
-                    with col_u3:
-                        durum_list = ["Onay Bekliyor", "Aktif", "Pasif"]
-                        durum_index = durum_list.index(k_user['durum']) if k_user['durum'] in durum_list else 0
-                        yeni_durum = st.selectbox("Erişim Durumu", durum_list, index=durum_index, disabled=is_self)
-
-                    col_b1, col_b2 = st.columns(2)
+            if df_bekleyenler.empty:
+                st.success("🎉 Şu anda onay bekleyen yeni üyelik başvurusu bulunmuyor.")
+            else:
+                st.warning(f"⚠️ Toplam **{len(df_bekleyenler)}** adet onay bekleyen üyelik başvurusu var:")
+                for idx, k_user in df_bekleyenler.iterrows():
+                    col_b1, col_b2, col_b3, col_b4 = st.columns([2, 2, 1, 1])
                     with col_b1:
-                        btn_u_kaydet = st.form_submit_button("💾 Değişiklikleri Kaydet", disabled=is_self)
+                        st.write(f"**{k_user['ad_soyad']}** (@{k_user['kullanici_adi']})")
                     with col_b2:
-                        btn_u_sil = st.form_submit_button("🗑️ Kullanıcıyı Sil", disabled=is_self)
+                        st.write(f"📞 {k_user['telefon']}")
+                    with col_b3:
+                        if st.button("✅ Onayla (Aktif Yap)", key=f"quick_app_{k_user['id']}", use_container_width=True):
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE kullanicilar SET durum='Aktif' WHERE id=?", (k_user['id'],))
+                            conn.commit()
+                            st.success(f"{k_user['ad_soyad']} onaylandı!")
+                            st.rerun()
+                    with col_b4:
+                        if st.button("❌ Reddet / Sil", key=f"quick_rej_{k_user['id']}", use_container_width=True):
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM kullanicilar WHERE id=?", (k_user['id'],))
+                            conn.commit()
+                            st.warning(f"{k_user['ad_soyad']} başvurusu silindi!")
+                            st.rerun()
+                    st.markdown("---")
 
-                    if btn_u_kaydet:
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE kullanicilar SET rol=?, durum=? WHERE id=?", (yeni_rol, yeni_durum, k_user['id']))
-                        conn.commit()
-                        st.success(f"{k_user['ad_soyad']} kullanıcısının bilgileri güncellendi!")
-                        st.rerun()
+        # TAB 2: TÜM KULLANICILAR & DÜZENLEME
+        with tab_tum_kullanicilar:
+            df_kullanicilar = pd.read_sql_query("SELECT id, kullanici_adi, ad_soyad, telefon, rol, durum FROM kullanicilar", conn)
+            
+            for idx, k_user in df_kullanicilar.iterrows():
+                is_self = k_user['kullanici_adi'] == user_info['kullanici_adi']
+                
+                with st.expander(f"👤 {k_user['ad_soyad']} (@{k_user['kullanici_adi']}) - Rol: {k_user['rol']} | Durum: {k_user['durum']}"):
+                    with st.form(key=f"edit_user_form_{k_user['id']}"):
+                        col_u1, col_u2, col_u3 = st.columns(3)
+                        
+                        with col_u1:
+                            st.write(f"**Telefon:** {k_user['telefon']}")
+                            st.write(f"**Kullanıcı Adı:** {k_user['kullanici_adi']}")
+                        
+                        with col_u2:
+                            rol_opts = ["Yönetici", "Yönetici Yardımcısı", "Personel"]
+                            current_rol = k_user['rol'] if k_user['rol'] in rol_opts else "Personel"
+                            rol_index = rol_opts.index(current_rol)
+                            yeni_rol = st.selectbox("Atanan Rol", rol_opts, index=rol_index, disabled=is_self)
+                            
+                        with col_u3:
+                            durum_list = ["Onay Bekliyor", "Aktif", "Pasif"]
+                            current_durum = k_user['durum'] if k_user['durum'] in durum_list else "Aktif"
+                            durum_index = durum_list.index(current_durum)
+                            yeni_durum = st.selectbox("Erişim Durumu", durum_list, index=durum_index, disabled=is_self)
 
-                    if btn_u_sil:
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM kullanicilar WHERE id=?", (k_user['id'],))
-                        conn.commit()
-                        st.warning(f"{k_user['ad_soyad']} silindi!")
-                        st.rerun()
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            btn_u_kaydet = st.form_submit_button("💾 Değişiklikleri Kaydet", disabled=is_self)
+                        with col_btn2:
+                            btn_u_sil = st.form_submit_button("🗑️ Kullanıcıyı Sil", disabled=is_self)
+
+                        if btn_u_kaydet:
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE kullanicilar SET rol=?, durum=? WHERE id=?", (yeni_rol, yeni_durum, k_user['id']))
+                            conn.commit()
+                            st.success(f"{k_user['ad_soyad']} bilgileri güncellendi!")
+                            st.rerun()
+
+                        if btn_u_sil:
+                            cursor = conn.cursor()
+                            cursor.execute("DELETE FROM kullanicilar WHERE id=?", (k_user['id'],))
+                            conn.commit()
+                            st.warning(f"{k_user['ad_soyad']} silindi!")
+                            st.rerun()
     else:
         st.warning("⚠️ Bu sayfadaki kullanıcı izinlerini yönetme yetkiniz bulunmamaktadır.")
 
