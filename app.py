@@ -15,6 +15,11 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+except ImportError:
+    st_autorefresh = None
+
 
 st.set_page_config(page_title="Güneş Doğalgaz | Ofis Takip", page_icon="☀️", layout="wide")
 
@@ -110,6 +115,7 @@ def save_state() -> None:
         "projects": st.session_state.projects,
         "masters": st.session_state.masters,
         "users": st.session_state.users,
+        "user_themes": st.session_state.get("user_themes", {}),
         "master_directory_version": st.session_state.get("master_directory_version", 0),
     }, ensure_ascii=False)
     with open_database() as connection:
@@ -356,6 +362,8 @@ def render_login() -> None:
 
 def render_tv() -> None:
     st.markdown("<style>[data-testid='stSidebar'],[data-testid='stHeader']{display:none}.block-container{max-width:100%;padding:1.5rem 3rem}[data-testid='stMetricValue']{font-size:2.45rem}</style>", unsafe_allow_html=True)
+    if st_autorefresh:
+        st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
     logo, title, action = st.columns([1, 5, 1])
     with logo:
         render_logo(95)
@@ -399,6 +407,7 @@ if "storage_loaded" not in st.session_state:
         st.session_state.projects = saved.get("projects", [])
         st.session_state.masters = normalize_masters(saved.get("masters", DEFAULT_MASTERS))
         st.session_state.users = saved.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+        st.session_state.user_themes = saved.get("user_themes", {})
         st.session_state.master_directory_version = saved.get("master_directory_version", 0)
     else:
         # İlk kayıt anında varsa eski oturum verisini korur, sonra sunucuya kaydeder.
@@ -409,6 +418,7 @@ if "storage_loaded" not in st.session_state:
             if legacy_master["name"] and not any(master["name"] == legacy_master["name"] for master in st.session_state.masters):
                 st.session_state.masters.append(legacy_master)
         st.session_state.users = st.session_state.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+        st.session_state.user_themes = st.session_state.get("user_themes", {})
         st.session_state.master_directory_version = 0
         save_state()
     st.session_state.storage_loaded = True
@@ -438,6 +448,9 @@ if "current_user" not in st.session_state:
 
 user = st.session_state.current_user
 role = user["role"]
+if st.session_state.get("theme_owner") != user["username"]:
+    st.session_state.theme = st.session_state.user_themes.get(user["username"], "Aydınlık")
+    st.session_state.theme_owner = user["username"]
 apply_theme(st.session_state.theme)
 if st.session_state.tv_mode:
     render_tv()
@@ -451,6 +464,8 @@ with st.sidebar:
     new_theme = st.selectbox("🎨 Görünüm", ["Aydınlık", "Koyu"], index=0 if st.session_state.theme == "Aydınlık" else 1)
     if new_theme != st.session_state.theme:
         st.session_state.theme = new_theme
+        st.session_state.user_themes[user["username"]] = new_theme
+        save_state()
         st.rerun()
     st.success(f"👤 {user['name']}\n\nRol: {ROLES[role]}")
     if st.button("💾 Verileri Sunucuya Kaydet", use_container_width=True):
@@ -464,6 +479,9 @@ with st.sidebar:
         del st.session_state.current_user
         st.rerun()
     st.caption("☁️ Otomatik kayıt açık")
+
+if st_autorefresh:
+    st_autorefresh(interval=60_000, limit=None, key="office_auto_refresh")
 
 head_logo, head_title, head_clock = st.columns([1, 7, 1])
 with head_logo:
