@@ -2,6 +2,7 @@ import io
 import re
 import unicodedata
 from datetime import date, datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -10,6 +11,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+
+LOGO_PATH = Path(__file__).with_name("gunes_muhendislik_logo.jpg")
 
 
 st.set_page_config(
@@ -111,6 +115,8 @@ def render_login() -> None:
     """, unsafe_allow_html=True)
     _, middle, _ = st.columns([1, 1.35, 1])
     with middle:
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), width=250)
         with st.form("login_form"):
             username = st.text_input("Kullanıcı adı", autocomplete="username")
             password = st.text_input("Şifre", type="password", autocomplete="current-password")
@@ -137,7 +143,10 @@ def render_tv_dashboard() -> None:
         h1 {font-size: 2.5rem !important;}
         </style>
     """, unsafe_allow_html=True)
-    top_left, top_right = st.columns([5, 1])
+    logo_col, top_left, top_right = st.columns([1, 5, 1])
+    with logo_col:
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), width=95)
     with top_left:
         st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
         st.caption(f"Son görüntüleme: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
@@ -188,19 +197,24 @@ def apply_theme(theme: str) -> None:
     input_bg = "#121d32" if is_dark else "#f1f4f8"
     st.markdown(f"""
         <style>
-        .stApp {{background: {bg}; color: {text};}}
+        .stApp {{background: {bg}; color: {text}; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;}}
         [data-testid="stSidebar"] {{background: {panel}; border-right: 1px solid {border};}}
         [data-testid="stSidebar"] * {{color: {text};}}
-        .block-container {{padding-top: 1.15rem;}}
-        [data-testid="stMetric"] {{background: {panel}; border: 1px solid {border}; border-radius: 16px; padding: 1rem 1.15rem;}}
+        .block-container {{padding-top: .8rem; max-width: 1500px;}}
+        [data-testid="stMetric"] {{background: {panel}; border: 1px solid {border}; border-radius: 12px; padding: .8rem 1rem; box-shadow: 0 4px 14px rgba(16,24,40,.04);}}
         [data-testid="stMetricLabel"] p, [data-testid="stCaptionContainer"], .stCaption {{color: {muted} !important;}}
         [data-testid="stMetricValue"] {{color: {text};}}
         div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {{background: {input_bg} !important; color: {text} !important; border-color: {border} !important;}}
         .stTextInput input, .stNumberInput input {{color: {text} !important;}}
         [data-testid="stDataFrame"] {{border: 1px solid {border}; border-radius: 14px; overflow: hidden;}}
+        [data-testid="stForm"] {{border: 1px solid {border}; background: {panel}; border-radius: 14px; padding: 1rem 1.2rem;}}
         [data-testid="stTabs"] [role="tab"] {{color: {muted};}}
-        [data-testid="stTabs"] [aria-selected="true"] {{color: #ffab00;}}
-        .dashboard-title {{font-size: 1.35rem; font-weight: 800; color: {text}; margin: 0;}}
+        [data-testid="stTabs"] [role="tab"] {{font-weight: 650; font-size: .9rem; padding: .55rem .7rem;}}
+        [data-testid="stTabs"] [aria-selected="true"] {{color: #e38100;}}
+        [data-testid="stTabs"] [data-baseweb="tab-border"] {{background: {border};}}
+        .stButton > button, .stDownloadButton > button {{border-radius: 9px; font-weight: 650;}}
+        hr {{border-color: {border} !important; margin: 1rem 0 !important;}}
+        .dashboard-title {{font-size: 1.35rem; font-weight: 800; color: {text}; margin: 0; letter-spacing: -.02em;}}
         .dashboard-subtitle {{color: {muted}; font-size: .83rem; margin-top: .15rem;}}
         .clock-box {{background: {panel}; border: 1px solid {border}; border-radius: 10px; padding: .5rem .7rem; text-align: center; color: {text}; font-weight: 700;}}
         </style>
@@ -298,7 +312,7 @@ st.session_state.ustalar = [
     for master in st.session_state.ustalar
 ]
 if "theme" not in st.session_state:
-    st.session_state.theme = "Koyu"
+    st.session_state.theme = "Aydınlık"
 if "tv_mode" not in st.session_state:
     st.session_state.tv_mode = False
 
@@ -314,7 +328,9 @@ if st.session_state.tv_mode:
     render_tv_dashboard()
     st.stop()
 
-st.sidebar.markdown("### 💼 Ofis Takip Paneli")
+if LOGO_PATH.exists():
+    st.sidebar.image(str(LOGO_PATH), use_container_width=True)
+st.sidebar.markdown("### Ofis Takip Paneli")
 st.sidebar.caption("Güneş Doğalgaz & Mühendislik")
 st.sidebar.markdown("---")
 selected_theme = st.sidebar.selectbox("🎨 Görünüm", ["Koyu", "Aydınlık"], index=0 if st.session_state.theme == "Koyu" else 1)
@@ -331,14 +347,20 @@ if st.sidebar.button("↪ Çıkış Yap", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.info("Ciro, tahsilat, kalan alacak ve usta performansını tek ekrandan takip edin.")
 
-header_left, header_clock = st.columns([8, 1])
+header_logo, header_left, header_clock = st.columns([1, 7, 1])
+with header_logo:
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), width=82)
 with header_left:
     st.markdown('<p class="dashboard-title">☀️ Güneş Doğalgaz | Dashboard</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="dashboard-subtitle">{date.today().strftime("%B %Y")} · {current_user["name"]} ({ROLE_LABELS[current_role]})</p>', unsafe_allow_html=True)
 with header_clock:
     st.markdown(f'<div class="clock-box">🕒 {datetime.now().strftime("%H:%M")}</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗂️ Kayıtlar", "📈 Raporlar", "📄 Usta PDF Raporu", "📝 Kayıt Yönetimi", "⚙️ Ayarlar"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "➕ Yeni Proje & İş Kaydı", "🔥 Finans & Performans", "👷 Usta Rehberi & PDF",
+    "📋 Merkezi İş Takip", "⚙️ Ayarlar",
+])
 
 with tab1:
     df_dashboard = get_dataframe()
@@ -488,8 +510,28 @@ with tab3:
         st.download_button("📄 Usta raporunu PDF indir", data=pdf, file_name=f"{safe_filename(selected_master)}_{master_month}_raporu.pdf", mime="application/pdf", type="primary")
 
 with tab4:
+    st.subheader("Merkezi İş Takip Ekranı")
+    st.caption("Müşteri, usta, proje veya sayaç seri no ile arayın; tüm kayıtları tek ekranda inceleyin.")
+    central_df = get_dataframe()
+    central_search = st.text_input("🔎 Kayıtlarda ara", placeholder="Müşteri, usta, proje veya sayaç seri no")
+    if not central_df.empty:
+        if central_search.strip():
+            text_columns = ["Müşteri", "Usta", "Proje", "Sayac_Seri_No", "Durum"]
+            match = pd.Series(False, index=central_df.index)
+            for column in text_columns:
+                match |= central_df[column].fillna("").astype(str).str.contains(central_search.strip(), case=False, na=False)
+            central_df = central_df[match]
+        st.dataframe(central_df[["Tarih", "Müşteri", "Proje", "Usta", "Surec_Adimi", "Tutar", "Tahsilat", "Kalan_Alacak", "Odeme_Yontemi", "Sayac_Seri_No", "Regulator_Durumu", "Notlar"]], hide_index=True, use_container_width=True, column_config={
+            "Tarih": st.column_config.DateColumn("Kayıt Tarihi", format="DD.MM.YYYY"),
+            "Surec_Adimi": "Armadaş Durumu", "Odeme_Yontemi": "Ödeme Tipi", "Sayac_Seri_No": "Sayaç Seri No", "Regulator_Durumu": "Regülatör",
+            "Tutar": st.column_config.NumberColumn("Toplam Bedel", format="%.2f ₺"),
+            "Tahsilat": st.column_config.NumberColumn("Alınan Ödeme", format="%.2f ₺"),
+            "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
+        })
+    else:
+        st.info("Henüz görüntülenecek kayıt bulunmuyor.")
+    st.markdown("---")
     if not can_manage_records(current_role):
-        st.subheader("Kayıt Yönetimi")
         st.warning("Kayıt düzenleme ve silme sadece Admin, Yönetici ve Yönetici Yardımcısı rollerine açıktır.")
     else:
         st.subheader("Kayıt Düzenleme ve Silme")
@@ -560,6 +602,28 @@ with tab5:
     if current_role not in manager_roles:
         st.warning("Bu alan yalnızca yönetim rollerine açıktır.")
     else:
+        st.markdown("#### 🪪 Usta Rehberi ve Performans Kartı")
+        if st.session_state.ustalar:
+            guide_master_name = st.selectbox("Detayını görmek istediğiniz usta", master_options(), key="master_guide")
+            guide_master = get_master(guide_master_name)
+            guide_df = get_dataframe()
+            guide_jobs = guide_df[guide_df["Usta"] == guide_master_name] if not guide_df.empty else pd.DataFrame(columns=COLUMNS)
+            g1, g2, g3, g4 = st.columns(4)
+            g1.metric("Usta Numarası", guide_master["number"] or "—")
+            g2.metric("Telefon", guide_master["phone"] or "—")
+            g3.metric("Ürettiği Toplam Ciro", tr_money(guide_jobs["Tutar"].sum() if not guide_jobs.empty else 0))
+            g4.metric("Kalan Toplam Alacak", tr_money(guide_jobs["Kalan_Alacak"].sum() if not guide_jobs.empty else 0))
+            if not guide_jobs.empty:
+                st.dataframe(guide_jobs[["Tarih", "Müşteri", "Proje", "Durum", "Kolon", "Ic_Tesisat", "Tutar", "Kalan_Alacak"]], hide_index=True, use_container_width=True, column_config={
+                    "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
+                    "Ic_Tesisat": "İç Tesisat", "Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺"),
+                    "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
+                })
+            else:
+                st.caption("Bu ustaya henüz proje atanmamış.")
+        else:
+            st.info("Performans kartını görmek için önce bir usta ekleyin.")
+        st.markdown("---")
         st.markdown("#### 👷 Usta Yönetimi")
         add_col, list_col = st.columns([1, 1.4])
         with add_col:
