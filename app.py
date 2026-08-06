@@ -33,14 +33,25 @@ DEFAULT_USERS = {
     "personel": {"name": "Ofis Personeli", "password": "personel123", "role": "personel"},
 }
 DEFAULT_MASTERS = [
-    {"name": "GÜNEŞ DOĞALGAZ GNS", "number": "U-001", "phone": ""},
-    {"name": "MARTES HİLMİ NOKAY", "number": "U-002", "phone": ""},
-    {"name": "MEHMET BEKİROĞLU", "number": "U-003", "phone": ""},
-    {"name": "MEHMET YİĞİT", "number": "U-004", "phone": ""},
+    {"name": "GÜNEŞ DOĞALGAZ GNS", "number": "U-001", "phone": "0507 450 45 33"},
+    {"name": "MARTES HİLMİ NOKAY", "number": "U-002", "phone": "0533 706 30 61"},
+    {"name": "MEHMET BEKİROĞLU", "number": "U-003", "phone": "0507 728 06 41"},
+    {"name": "MEHMET YİĞİT", "number": "U-004", "phone": "0536 583 64 68"},
     {"name": "MUHAMMET SÜT", "number": "U-005", "phone": ""},
-    {"name": "MUSTAFA GÜL", "number": "U-006", "phone": ""},
-    {"name": "SURİYELİ MUHAMMET", "number": "U-007", "phone": ""},
-    {"name": "VATAN SİNAN", "number": "U-008", "phone": ""},
+    {"name": "MUSTAFA GÜL", "number": "U-006", "phone": "0545 409 64 45"},
+    {"name": "SURİYELİ MUHAMMET", "number": "U-007", "phone": "0537 897 02 30"},
+    {"name": "VATAN SİNAN", "number": "U-008", "phone": "0544 211 86 96"},
+    {"name": "ERDAL USTA", "number": "U-009", "phone": "0537 431 91 00"},
+    {"name": "FAHRİ AKPINAR", "number": "U-010", "phone": "0538 896 90 20"},
+    {"name": "HARUN TERLİKSİZ", "number": "U-011", "phone": "0532 404 01 46"},
+    {"name": "MARTEK MEHMET", "number": "U-012", "phone": "0552 458 50 86"},
+    {"name": "MESUT AKGÜN TERMOTEKNİK - GM", "number": "U-013", "phone": "0534 774 16 52"},
+    {"name": "MURAT USTA", "number": "U-014", "phone": "0538 259 69 47"},
+    {"name": "TURABİ USTA", "number": "U-015", "phone": "0545 763 92 02"},
+    {"name": "YAKUP DAL", "number": "U-016", "phone": "0530 467 11 46"},
+    {"name": "CUMA USTA", "number": "U-017", "phone": "0530 240 62 00"},
+    {"name": "ŞAHİN USTA", "number": "U-018", "phone": "0553 054 55 25"},
+    {"name": "ÖMER BEŞENLİOĞLU", "number": "U-019", "phone": "0552 351 91 95"},
 ]
 ARMADAS_STEPS = [
     # Armadaş ekranındaki resmi sıralama
@@ -98,6 +109,7 @@ def save_state() -> None:
         "projects": st.session_state.projects,
         "masters": st.session_state.masters,
         "users": st.session_state.users,
+        "master_directory_version": st.session_state.get("master_directory_version", 0),
     }, ensure_ascii=False)
     with open_database() as connection:
         connection.execute(
@@ -349,6 +361,7 @@ if "storage_loaded" not in st.session_state:
         st.session_state.projects = saved.get("projects", [])
         st.session_state.masters = normalize_masters(saved.get("masters", DEFAULT_MASTERS))
         st.session_state.users = saved.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+        st.session_state.master_directory_version = saved.get("master_directory_version", 0)
     else:
         # İlk kayıt anında varsa eski oturum verisini korur, sonra sunucuya kaydeder.
         current_projects = list(st.session_state.get("projects", []))
@@ -358,8 +371,20 @@ if "storage_loaded" not in st.session_state:
             if legacy_master["name"] and not any(master["name"] == legacy_master["name"] for master in st.session_state.masters):
                 st.session_state.masters.append(legacy_master)
         st.session_state.users = st.session_state.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+        st.session_state.master_directory_version = 0
         save_state()
     st.session_state.storage_loaded = True
+
+if st.session_state.get("master_directory_version", 0) < 2:
+    # Yeni usta rehberini mevcut kullanıcı eklemelerini silmeden bir kez birleştirir.
+    for directory_master in DEFAULT_MASTERS:
+        present = next((master for master in st.session_state.masters if master["name"] == directory_master["name"]), None)
+        if present is None:
+            st.session_state.masters.append(directory_master.copy())
+        elif not present.get("phone") and directory_master["phone"]:
+            present["phone"] = directory_master["phone"]
+    st.session_state.master_directory_version = 2
+    save_state()
 if "theme" not in st.session_state:
     st.session_state.theme = "Aydınlık"
 if "tv_mode" not in st.session_state:
