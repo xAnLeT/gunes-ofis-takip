@@ -23,7 +23,7 @@ DEFAULT_USTALAR: list[str] = []
 COLUMNS = [
     "Tarih", "Ay", "Usta", "Proje", "Müşteri", "Kolon", "Ic_Tesisat",
     "Durum", "Tutar", "Tahsilat", "Odeme_Yontemi", "Sayac_Seri_No",
-    "Regulator_Durumu", "Proje_Gelis_Yolu", "Diger_Islemler", "Surec_Adimi", "Notlar",
+    "Regulator_Durumu", "Proje_Gelis_Yolu", "Diger_Islemler", "Surec_Adimi", "Notlar", "Ofis_Borcu",
 ]
 
 ROLE_LABELS = {
@@ -67,7 +67,7 @@ def get_dataframe() -> pd.DataFrame:
     if df.empty:
         return df
     df["Tarih"] = pd.to_datetime(df["Tarih"])
-    for column in ["Kolon", "Ic_Tesisat", "Tutar", "Tahsilat"]:
+    for column in ["Kolon", "Ic_Tesisat", "Tutar", "Tahsilat", "Ofis_Borcu"]:
         df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
     df["Ay"] = df["Tarih"].dt.strftime("%Y-%m")
     df["Kalan_Alacak"] = (df["Tutar"] - df["Tahsilat"]).clip(lower=0)
@@ -208,7 +208,11 @@ def apply_theme(theme: str) -> None:
 
 
 def master_options() -> list[str]:
-    return st.session_state.ustalar if st.session_state.ustalar else ["Usta atanmamış"]
+    return [master["name"] for master in st.session_state.ustalar] or ["Usta atanmamış"]
+
+
+def get_master(name: str) -> dict | None:
+    return next((master for master in st.session_state.ustalar if master["name"] == name), None)
 
 
 def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
@@ -288,6 +292,11 @@ if "users" not in st.session_state:
     st.session_state.users = DEFAULT_USERS.copy()
 if "ustalar" not in st.session_state:
     st.session_state.ustalar = DEFAULT_USTALAR.copy()
+# Eski sürümde yalnızca ad olarak kaydedilmiş ustaları yeni bilgi yapısına dönüştürür.
+st.session_state.ustalar = [
+    master if isinstance(master, dict) else {"name": str(master), "number": "", "phone": ""}
+    for master in st.session_state.ustalar
+]
 if "theme" not in st.session_state:
     st.session_state.theme = "Koyu"
 if "tv_mode" not in st.session_state:
@@ -335,12 +344,13 @@ with tab1:
     df_dashboard = get_dataframe()
     dashboard_month = available_months(df_dashboard)[0]
     dashboard_current = df_dashboard[df_dashboard["Ay"] == dashboard_month] if not df_dashboard.empty else pd.DataFrame(columns=COLUMNS)
-    dashboard_revenue = dashboard_current["Tutar"].sum() if not dashboard_current.empty else 0
-    dashboard_collection = dashboard_current["Tahsilat"].sum() if not dashboard_current.empty else 0
-    d1, d2, d3 = st.columns(3)
+    total_debt = df_dashboard["Ofis_Borcu"].sum() if not df_dashboard.empty else 0
+    total_receivable = df_dashboard["Kalan_Alacak"].sum() if not df_dashboard.empty else 0
+    d1, d2, d3, d4 = st.columns(4)
     d1.metric("Toplam Kayıt", f"{len(df_dashboard)}", help="Sistemdeki tüm proje kayıtları")
-    d2.metric(f"{dashboard_month} Alınan Ödeme", tr_money(dashboard_collection), delta=calculate_change(dashboard_collection, 0))
-    d3.metric("Bekleyen Ödeme", tr_money(dashboard_revenue - dashboard_collection))
+    d2.metric("Kayıtlı Usta", f"{len(st.session_state.ustalar)}", help="Ayarlar ekranından eklediğiniz ustalar")
+    d3.metric("Toplam Borç", tr_money(total_debt), help="Kaydedilmiş ofis borcu ve gider toplamı")
+    d4.metric("Toplam Ofis Alacağı", tr_money(total_receivable), help="Toplam proje bedeli eksi tahsil edilen tutar")
     st.markdown("---")
     st.subheader("Yeni Proje / Kayıt Ekle")
     with st.form("new_project", clear_on_submit=True):
@@ -354,6 +364,7 @@ with tab1:
         with c2:
             tutar = st.number_input("💰 Proje toplam bedeli (TL)", min_value=0.0, step=1000.0, value=5000.0)
             tahsilat = st.number_input("Alınan kapora / ödeme (TL)", min_value=0.0, max_value=float(tutar), step=1000.0, value=0.0)
+            ofis_borcu = st.number_input("Ofis borcu / gideri (TL)", min_value=0.0, step=500.0, value=0.0)
             odeme_yontemi = st.selectbox("Ödeme yöntemi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Çek / Senet", "Diğer"])
             durum = st.selectbox("İş durumu", ["Devam Ediyor", "Tamamlandı", "Beklemede"])
         with c3:
@@ -376,7 +387,7 @@ with tab1:
                 "Odeme_Yontemi": odeme_yontemi, "Sayac_Seri_No": sayac_seri_no,
                 "Regulator_Durumu": regulator, "Proje_Gelis_Yolu": gelis_yolu,
                 "Diger_Islemler": ", ".join(diger_islemler), "Surec_Adimi": surec_adimi,
-                "Notlar": notlar.strip(),
+                "Notlar": notlar.strip(), "Ofis_Borcu": ofis_borcu,
             })
             st.success(f"{proje} projesi kaydedildi.")
 
@@ -387,12 +398,13 @@ with tab1:
         st.info("Henüz kayıtlı proje yok.")
     else:
         st.dataframe(
-            overview[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak", "Odeme_Yontemi", "Sayac_Seri_No", "Regulator_Durumu", "Notlar"]],
+            overview[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Ofis_Borcu", "Kalan_Alacak", "Odeme_Yontemi", "Sayac_Seri_No", "Regulator_Durumu", "Notlar"]],
             column_config={
                 "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
                 "Ic_Tesisat": "İç Tesisat",
                 "Tutar": st.column_config.NumberColumn("Proje Bedeli", format="%.2f ₺"),
                 "Tahsilat": st.column_config.NumberColumn("Tahsilat", format="%.2f ₺"),
+                "Ofis_Borcu": st.column_config.NumberColumn("Ofis Borcu", format="%.2f ₺"),
                 "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
                 "Odeme_Yontemi": "Ödeme Tipi", "Sayac_Seri_No": "Sayaç Seri No",
                 "Regulator_Durumu": "Regülatör",
@@ -503,10 +515,11 @@ with tab4:
                     edit_installation = st.number_input("İç tesisat", min_value=0, step=1, value=int(record["Ic_Tesisat"]))
                     edit_amount = st.number_input("Proje bedeli (TL)", min_value=0.0, value=float(record["Tutar"]), step=1000.0)
                     edit_collection = st.number_input("Tahsilat (TL)", min_value=0.0, max_value=float(edit_amount), value=min(float(record.get("Tahsilat", 0)), float(edit_amount)), step=1000.0)
+                    edit_debt = st.number_input("Ofis borcu / gideri (TL)", min_value=0.0, value=float(record.get("Ofis_Borcu", 0) or 0), step=500.0)
                 save = st.form_submit_button("Değişiklikleri Kaydet", type="primary")
             if save:
                 updated_record = record.copy()
-                updated_record.update({"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection})
+                updated_record.update({"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection, "Ofis_Borcu": edit_debt})
                 st.session_state.projeler[selected_index] = updated_record
                 st.success("Kayıt güncellendi.")
                 st.rerun()
@@ -552,40 +565,50 @@ with tab5:
         with add_col:
             with st.form("add_master", clear_on_submit=True):
                 new_master = st.text_input("Yeni usta adı")
+                new_master_number = st.text_input("Usta numarası", placeholder="Örn: U-001")
+                new_master_phone = st.text_input("Telefon numarası", placeholder="Örn: 05XX XXX XX XX")
                 add_master = st.form_submit_button("Usta Ekle", type="primary")
             if add_master:
                 master_name = new_master.strip().upper()
                 if not master_name:
                     st.error("Usta adı girin.")
-                elif master_name in st.session_state.ustalar:
+                elif any(master["name"] == master_name for master in st.session_state.ustalar):
                     st.error("Bu usta zaten kayıtlı.")
+                elif new_master_number.strip() and any(master["number"] == new_master_number.strip().upper() for master in st.session_state.ustalar):
+                    st.error("Bu usta numarası zaten kayıtlı.")
                 else:
-                    st.session_state.ustalar.append(master_name)
+                    automatic_number = f"U-{len(st.session_state.ustalar) + 1:03d}"
+                    st.session_state.ustalar.append({"name": master_name, "number": new_master_number.strip().upper() or automatic_number, "phone": new_master_phone.strip()})
                     st.success(f"{master_name} eklendi.")
                     st.rerun()
         with list_col:
             if not st.session_state.ustalar:
                 st.info("Henüz usta eklenmedi. Soldaki formdan ekleyebilirsiniz.")
             else:
-                selected_old_master = st.selectbox("Düzenlenecek / kaldırılacak usta", st.session_state.ustalar)
-                rename_col, delete_col = st.columns([2, 1])
-                renamed_master = rename_col.text_input("Yeni ad", value=selected_old_master, key="rename_master")
-                if rename_col.button("Adı Güncelle"):
+                master_names = master_options()
+                selected_old_master = st.selectbox("Düzenlenecek / kaldırılacak usta", master_names)
+                selected_master_data = get_master(selected_old_master)
+                rename_col, number_col, phone_col, delete_col = st.columns([2, 1.15, 1.4, 1])
+                renamed_master = rename_col.text_input("Usta adı", value=selected_old_master, key="rename_master")
+                edited_master_number = number_col.text_input("Usta no", value=selected_master_data["number"], key="edit_master_no")
+                edited_master_phone = phone_col.text_input("Telefon", value=selected_master_data["phone"], key="edit_master_phone")
+                if rename_col.button("Ustayı Güncelle"):
                     clean_name = renamed_master.strip().upper()
                     if not clean_name:
                         st.error("Usta adı boş olamaz.")
-                    elif clean_name != selected_old_master and clean_name in st.session_state.ustalar:
+                    elif clean_name != selected_old_master and clean_name in master_names:
                         st.error("Bu isimde başka bir usta zaten var.")
+                    elif edited_master_number.strip() and any(master["number"] == edited_master_number.strip().upper() and master["name"] != selected_old_master for master in st.session_state.ustalar):
+                        st.error("Bu usta numarası başka bir ustada kullanılıyor.")
                     else:
-                        master_index = st.session_state.ustalar.index(selected_old_master)
-                        st.session_state.ustalar[master_index] = clean_name
+                        selected_master_data.update({"name": clean_name, "number": edited_master_number.strip().upper(), "phone": edited_master_phone.strip()})
                         for project in st.session_state.projeler:
                             if project.get("Usta") == selected_old_master:
                                 project["Usta"] = clean_name
-                        st.success("Usta adı ve ilgili eski kayıtlar güncellendi.")
+                        st.success("Usta bilgileri ve ilgili eski kayıtlar güncellendi.")
                         st.rerun()
                 if delete_col.button("Ustayı Kaldır", type="secondary"):
-                    st.session_state.ustalar.remove(selected_old_master)
+                    st.session_state.ustalar.remove(selected_master_data)
                     for project in st.session_state.projeler:
                         if project.get("Usta") == selected_old_master:
                             project["Usta"] = "Usta atanmamış"
