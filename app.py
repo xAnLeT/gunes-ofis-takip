@@ -23,7 +23,16 @@ st.set_page_config(
     layout="wide",
 )
 
-DEFAULT_USTALAR: list[str] = []
+DEFAULT_USTALAR = [
+    {"name": "GÜNEŞ DOĞALGAZ GNS", "number": "U-001", "phone": ""},
+    {"name": "MARTES HİLMİ NOKAY", "number": "U-002", "phone": ""},
+    {"name": "MEHMET BEKİROĞLU", "number": "U-003", "phone": ""},
+    {"name": "MEHMET YİĞİT", "number": "U-004", "phone": ""},
+    {"name": "MUHAMMET SÜT", "number": "U-005", "phone": ""},
+    {"name": "MUSTAFA GÜL", "number": "U-006", "phone": ""},
+    {"name": "SURİYELİ MUHAMMET", "number": "U-007", "phone": ""},
+    {"name": "VATAN SİNAN", "number": "U-008", "phone": ""},
+]
 
 COLUMNS = [
     "Tarih", "Ay", "Usta", "Proje", "Müşteri", "Kolon", "Ic_Tesisat",
@@ -354,13 +363,15 @@ if "projeler" not in st.session_state:
 if "users" not in st.session_state:
     st.session_state.users = DEFAULT_USERS.copy()
 if "ustalar" not in st.session_state:
-    st.session_state.ustalar = DEFAULT_USTALAR.copy()
+    st.session_state.ustalar = [master.copy() for master in DEFAULT_USTALAR]
 # Bu sürüme geçildiğinde önceki örnek verileri bir kez temizler.
 # Sonraki sayfa yenilemelerinde kullanıcının eklediği kayıtlar korunur.
 if "clean_start_v1" not in st.session_state:
     st.session_state.projeler = []
-    st.session_state.ustalar = []
     st.session_state.clean_start_v1 = True
+if "masters_restored_v1" not in st.session_state:
+    st.session_state.ustalar = [master.copy() for master in DEFAULT_USTALAR]
+    st.session_state.masters_restored_v1 = True
 # Eski sürümde yalnızca ad olarak kaydedilmiş ustaları yeni bilgi yapısına dönüştürür.
 st.session_state.ustalar = [
     master if isinstance(master, dict) else {"name": str(master), "number": "", "phone": ""}
