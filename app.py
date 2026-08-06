@@ -254,6 +254,7 @@ def get_master(name: str) -> dict | None:
     return next((master for master in st.session_state.ustalar if master["name"] == name), None)
 
 
+@st.cache_data(show_spinner=False)
 def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
     """Seçili usta ve ay için indirilebilir gerçek PDF üretir."""
     buffer = io.BytesIO()
