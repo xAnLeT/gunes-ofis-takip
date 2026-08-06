@@ -4,7 +4,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -94,6 +94,7 @@ def open_database() -> sqlite3.Connection:
     """Uygulamanın çalıştığı sunucudaki kalıcı kayıt alanını açar."""
     connection = sqlite3.connect(DATABASE_PATH)
     connection.execute("CREATE TABLE IF NOT EXISTS application_state (id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL, saved_at TEXT NOT NULL)")
+    connection.execute("CREATE TABLE IF NOT EXISTS login_sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at TEXT NOT NULL)")
     return connection
 
 
@@ -121,6 +122,40 @@ def save_state() -> None:
 
 def normalize_masters(items: list) -> list[dict]:
     return [item.copy() if isinstance(item, dict) else {"name": str(item), "number": "", "phone": ""} for item in items]
+
+
+def create_login_session(username: str) -> str:
+    """Tarayıcı yenilense bile girişin korunması için 30 günlük oturum anahtarı üretir."""
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now() + timedelta(days=30)).isoformat(timespec="seconds")
+    with open_database() as connection:
+        connection.execute("DELETE FROM login_sessions WHERE expires_at < ?", (datetime.now().isoformat(timespec="seconds"),))
+        connection.execute("INSERT INTO login_sessions (token, username, expires_at) VALUES (?, ?, ?)", (token, username, expires_at))
+    return token
+
+
+def restore_login_session() -> dict | None:
+    token = st.query_params.get("oturum")
+    if not token:
+        return None
+    with open_database() as connection:
+        row = connection.execute("SELECT username, expires_at FROM login_sessions WHERE token = ?", (str(token),)).fetchone()
+    if not row or row[1] <= datetime.now().isoformat(timespec="seconds"):
+        return None
+    account = st.session_state.users.get(row[0])
+    if not account:
+        return None
+    st.session_state.login_token = str(token)
+    return {"username": row[0], **account}
+
+
+def clear_login_session() -> None:
+    token = st.session_state.get("login_token") or st.query_params.get("oturum")
+    if token:
+        with open_database() as connection:
+            connection.execute("DELETE FROM login_sessions WHERE token = ?", (str(token),))
+    st.query_params.clear()
+    st.session_state.pop("login_token", None)
 
 
 def get_df() -> pd.DataFrame:
@@ -282,7 +317,10 @@ def render_login() -> None:
                     st.error("İnsan doğrulaması hatalı.")
                     reset_human_check()
                 elif user and user["password"] == password:
-                    st.session_state.current_user = {"username": username.strip().lower(), **user}
+                    logged_username = username.strip().lower()
+                    st.session_state.current_user = {"username": logged_username, **user}
+                    st.session_state.login_token = create_login_session(logged_username)
+                    st.query_params["oturum"] = st.session_state.login_token
                     st.rerun()
                 else:
                     st.error("Kullanıcı adı veya şifre hatalı.")
@@ -391,6 +429,10 @@ if "tv_mode" not in st.session_state:
     st.session_state.tv_mode = False
 
 if "current_user" not in st.session_state:
+    resumed_user = restore_login_session()
+    if resumed_user:
+        st.session_state.current_user = resumed_user
+if "current_user" not in st.session_state:
     render_login()
     st.stop()
 
@@ -418,6 +460,7 @@ with st.sidebar:
         st.session_state.tv_mode = True
         st.rerun()
     if st.button("↪ Çıkış Yap", use_container_width=True):
+        clear_login_session()
         del st.session_state.current_user
         st.rerun()
     st.caption("☁️ Otomatik kayıt açık")
