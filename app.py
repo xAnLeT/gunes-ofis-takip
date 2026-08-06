@@ -135,21 +135,19 @@ def init_db():
 
 init_db()
 
-# --- CSS / TASARIM (Görseldeki Menü Stiline Uyarlanmıştır) ---
+# --- CSS / TASARIM ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stApp { background-color: #0b101d; color: #f3f4f6; }
     
-    /* Sidebar / Sol Menü Arka Planı */
     [data-testid="stSidebar"] { 
         background-color: #0d1424; 
         border-right: 1px solid #1a233a; 
         padding-top: 10px;
     }
     
-    /* Görseldeki Menü Buton Tasarımı */
     [data-testid="stSidebar"] .stButton button {
         width: 100%;
         background-color: #131c2e;
@@ -290,7 +288,7 @@ izin_kullanici_yonetim = user_info.get('izin_kullanici_yonetim', False)
 is_admin = user_info.get('rol') == "Yönetici" or izin_kullanici_yonetim
 
 # ==========================================
-# SOL MENÜ (SİDEBAR) - Görsel Tasarıma Uygun Butonlar
+# SOL MENÜ (SİDEBAR)
 # ==========================================
 with st.sidebar:
     st.markdown("""
@@ -303,7 +301,6 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    # Görseldeki düzene göre butonlar
     if st.button("🗂️  Dashboard", use_container_width=True):
         st.session_state['current_page'] = "Dashboard"
         st.rerun()
@@ -454,14 +451,42 @@ if sayfa == "Dashboard":
         st.dataframe(formatted_df.drop(columns=['Seç'], errors='ignore'), use_container_width=True, hide_index=True)
 
 # ==========================================
-# SAYFA 2: KAYITLAR
+# SAYFA 2: KAYITLAR (Kaldırma/Silme Özellikli)
 # ==========================================
 elif sayfa == "Kayıtlar":
-    st.title("📋 Tüm Kayıtlar")
+    st.title("📋 Tüm Kayıtlar ve Kaldırma Paneli")
+    st.caption("☑️ Tablodan silmek/kaldırmak istediğiniz kayıtların **Seç** kutucuğunu işaretleyip aşağıdaki butona basabilirsiniz.")
+    
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar ORDER BY id DESC", conn)
     if not df_kayitlar.empty:
         formatted_df = format_table_df(df_kayitlar)
-        st.dataframe(formatted_df.drop(columns=['Seç'], errors='ignore'), use_container_width=True, hide_index=True)
+        
+        edited_kayitlar_df = st.data_editor(
+            formatted_df,
+            column_config={
+                "Seç": st.column_config.CheckboxColumn("Seç", default=False),
+                "Toplam Bedel (TL)": st.column_config.NumberColumn(format="%.2f", disabled=True),
+                "Alınan Ödeme (TL)": st.column_config.NumberColumn(format="%.2f", disabled=True),
+                "Kalan Alacak (TL)": st.column_config.NumberColumn(format="%.2f", disabled=True),
+            },
+            use_container_width=True,
+            hide_index=True,
+            key="kayitlar_tablo_editor"
+        )
+        
+        if st.button("🗑️ Seçili Kayıtları Sistemden Kaldır / Sil", type="primary"):
+            secilenler = edited_kayitlar_df[edited_kayitlar_df['Seç'] == True]
+            if not secilenler.empty:
+                cursor = conn.cursor()
+                for _, row in secilenler.iterrows():
+                    cursor.execute("DELETE FROM kayitlar WHERE id = ?", (row['id'],))
+                conn.commit()
+                st.warning(f"⚠️ Seçilen {len(secilenler)} kayıt başarıyla kaldırıldı/silindi!")
+                st.rerun()
+            else:
+                st.info("Lütfen kaldırmak için tablodan en az bir satırın 'Seç' kutucuğunu işaretleyin.")
+    else:
+        st.info("Sistemde kayıtlı proje bulunmamaktadır.")
 
 # ==========================================
 # SAYFA 3: DÜZENLEME
@@ -618,7 +643,7 @@ elif sayfa == "Ustalar":
                             st.rerun()
 
 # ==========================================
-# SAYFA 5: RAPORLAR & ANALİZ (Düzenleme ve Kaldırma Özellikli)
+# SAYFA 5: RAPORLAR & ANALİZ
 # ==========================================
 elif sayfa == "Raporlar & Analiz":
     st.title("📊 Raporlar & Mali Analiz ve Kaldırma Paneli")
@@ -650,7 +675,7 @@ elif sayfa == "Raporlar & Analiz":
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.subheader("📋 Rapor Tablosu ve Kaldırma / Silme Alanı")
-            st.caption("✏️ Hücreleri doğrudan düzenleyebilir, değiştirebilir veya istediğiniz kaydı listeden tamamen kaldırabilirsiniz.")
+            st.caption("✏️ Hücreleri doğrudan düzenleyebilir veya istediğiniz kaydı listeden tamamen kaldırabilirsiniz.")
 
             formatted_rapor_df = format_table_df(df_filtered)
             
