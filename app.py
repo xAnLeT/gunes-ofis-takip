@@ -398,12 +398,12 @@ with tab1:
     total_debt = df_dashboard["Ofis_Borcu"].sum() if not df_dashboard.empty else 0
     total_receivable = df_dashboard["Kalan_Alacak"].sum() if not df_dashboard.empty else 0
     d1, d2, d3, d4 = st.columns(4)
-    d1.metric("Toplam Kayıt", f"{len(df_dashboard)}", help="Sistemdeki tüm proje kayıtları")
-    d2.metric("Kayıtlı Usta", f"{len(st.session_state.ustalar)}", help="Ayarlar ekranından eklediğiniz ustalar")
-    d3.metric("Toplam Borç", tr_money(total_debt), help="Kaydedilmiş ofis borcu ve gider toplamı")
-    d4.metric("Toplam Ofis Alacağı", tr_money(total_receivable), help="Toplam proje bedeli eksi tahsil edilen tutar")
+    d1.metric("🗂️ Toplam Kayıt", f"{len(df_dashboard)}", help="Sistemdeki tüm proje kayıtları")
+    d2.metric("👷 Kayıtlı Usta", f"{len(st.session_state.ustalar)}", help="Ayarlar ekranından eklediğiniz ustalar")
+    d3.metric("📉 Toplam Borç", tr_money(total_debt), help="Kaydedilmiş ofis borcu ve gider toplamı")
+    d4.metric("🏦 Toplam Ofis Alacağı", tr_money(total_receivable), help="Toplam proje bedeli eksi tahsil edilen tutar")
     st.markdown("---")
-    st.subheader("Yeni Proje / Kayıt Ekle")
+    st.subheader("📝 Yeni Proje / Kayıt Ekle")
     with st.form("new_project", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -443,7 +443,7 @@ with tab1:
             st.success(f"{proje} projesi kaydedildi.")
 
     st.markdown("---")
-    st.subheader("Son Kayıtlar")
+    st.subheader("🕘 Son Kayıtlar")
     overview = get_dataframe()
     if overview.empty:
         st.info("Henüz kayıtlı proje yok.")
@@ -463,7 +463,7 @@ with tab1:
         )
 
 with tab2:
-    st.subheader("Mali Durum ve Usta Performans Analizi")
+    st.subheader("📊 Mali Durum ve Usta Performans Analizi")
     df = get_dataframe()
     months = available_months(df)
     selected_month = st.selectbox("Rapor dönemi", months, key="analysis_month")
@@ -476,13 +476,13 @@ with tab2:
     prev_revenue = previous["Tutar"].sum() if not previous.empty else 0
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Toplam Ciro", tr_money(revenue), delta=calculate_change(revenue, prev_revenue), delta_color="normal", help=f"{last_month} cirosuna göre değişim")
-    k2.metric("Toplam Tahsil Edilen", tr_money(collection))
-    k3.metric("Kalan Ofis Alacağı", tr_money(receivable))
-    k4.metric("Toplam Proje", f"{len(current)} adet")
+    k1.metric("💰 Toplam Ciro", tr_money(revenue), delta=calculate_change(revenue, prev_revenue), delta_color="normal", help=f"{last_month} cirosuna göre değişim")
+    k2.metric("✅ Toplam Tahsil Edilen", tr_money(collection))
+    k3.metric("⏳ Kalan Ofis Alacağı", tr_money(receivable))
+    k4.metric("🗂️ Toplam Proje", f"{len(current)} adet")
 
     st.markdown("---")
-    st.subheader(f"{selected_month} Usta İş Dağılımı")
+    st.subheader(f"👷 {selected_month} Usta İş Dağılımı")
     if current.empty:
         st.info("Bu dönemde analiz edilecek kayıt bulunmuyor.")
     else:
@@ -493,12 +493,12 @@ with tab2:
         ).sort_values("Ürettiği Ciro", ascending=False)
         left, right = st.columns([1.15, 1])
         with left:
-            st.markdown("##### Kolon ve iç tesisat grafiği")
+            st.markdown("##### 📊 Kolon ve iç tesisat grafiği")
             st.bar_chart(master_summary.set_index("Usta")[["Kolon Sayısı", "İç Tesisat Sayısı"]], color=["#167D9A", "#F4A261"])
-            st.markdown("##### Ustaların ürettiği ciro")
+            st.markdown("##### 💵 Ustaların ürettiği ciro")
             st.bar_chart(master_summary.set_index("Usta")[["Ürettiği Ciro"]], color="#2A9D8F")
         with right:
-            st.markdown("##### Usta bilgi ve performans tablosu")
+            st.markdown("##### 📋 Usta bilgi ve performans tablosu")
             st.dataframe(master_summary, column_config={
                 "Ürettiği Ciro": st.column_config.NumberColumn(format="%.2f ₺"),
                 "Tahsilat": st.column_config.NumberColumn(format="%.2f ₺"),
@@ -506,7 +506,7 @@ with tab2:
             }, hide_index=True, use_container_width=True)
 
 with tab3:
-    st.subheader("Usta Bazlı Proje Raporu")
+    st.subheader("📄 Usta Bazlı Proje Raporu")
     df = get_dataframe()
     months = available_months(df)
     a, b = st.columns(2)
@@ -527,7 +527,7 @@ with tab3:
         p3.metric("Tahsilat", tr_money(collection))
         p4.metric("Kolon", int(master_records["Kolon"].sum()))
         p5.metric("İç Tesisat", int(master_records["Ic_Tesisat"].sum()))
-        st.markdown("##### Yaptığı projeler")
+        st.markdown("##### 🧰 Yaptığı projeler")
         st.dataframe(master_records[["Tarih", "Proje", "Müşteri", "Durum", "Kolon", "Ic_Tesisat", "Tutar", "Tahsilat", "Kalan_Alacak"]], column_config={
             "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
             "Ic_Tesisat": "İç Tesisat",
@@ -539,7 +539,7 @@ with tab3:
         st.download_button("📄 Usta raporunu PDF indir", data=pdf, file_name=f"{safe_filename(selected_master)}_{master_month}_raporu.pdf", mime="application/pdf", type="primary")
 
 with tab4:
-    st.subheader("Merkezi İş Takip Ekranı")
+    st.subheader("📋 Merkezi İş Takip Ekranı")
     st.caption("Müşteri, usta, proje veya sayaç seri no ile arayın; tüm kayıtları tek ekranda inceleyin.")
     central_df = get_dataframe()
     central_search = st.text_input("🔎 Kayıtlarda ara", placeholder="Müşteri, usta, proje veya sayaç seri no")
@@ -563,7 +563,7 @@ with tab4:
     if not can_manage_records(current_role):
         st.warning("Kayıt düzenleme ve silme sadece Admin, Yönetici ve Yönetici Yardımcısı rollerine açıktır.")
     else:
-        st.subheader("Kayıt Düzenleme ve Silme")
+        st.subheader("✏️ Kayıt Düzenleme ve Silme")
         st.caption("Kayıt seçin, değerleri düzenleyin veya kaydı silin.")
         if not st.session_state.projeler:
             st.info("Düzenlenecek kayıt bulunmuyor.")
@@ -626,7 +626,7 @@ with tab4:
             st.caption("Bu başlangıç sürümünde kullanıcılar oturum belleğinde tutulur. Kalıcı ve güvenli kullanım için kullanıcıları veritabanında saklayıp şifreleri hash'leyin.")
 
 with tab5:
-    st.subheader("Ayarlar ve Yönetim")
+    st.subheader("⚙️ Ayarlar ve Yönetim")
     manager_roles = {"admin", "yonetici", "yonetici_yardimcisi"}
     if current_role not in manager_roles:
         st.warning("Bu alan yalnızca yönetim rollerine açıktır.")
