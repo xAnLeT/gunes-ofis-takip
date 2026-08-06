@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from fpdf import FPDF
 import io
 
@@ -53,7 +53,7 @@ def init_db():
                     durum TEXT
                 )''')
 
-    # 3. Kullanıcılar Tablosu (Telefon ve Durum Eklendi)
+    # 3. Kullanıcılar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS kullanicilar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kullanici_adi TEXT UNIQUE,
@@ -64,7 +64,15 @@ def init_db():
                     durum TEXT
                 )''')
     
-    # Varsayılan Admin Hesabı (Yoksa Oluştur)
+    # --- OTOMATİK VERİTABANI MİGRASYONU (HATA ENGELLECİ) ---
+    c.execute("PRAGMA table_info(kullanicilar)")
+    kullanici_sutunlar = [col[1] for col in c.fetchall()]
+    if 'telefon' not in kullanici_sutunlar:
+        c.execute("ALTER TABLE kullanicilar ADD COLUMN telefon TEXT DEFAULT ''")
+    if 'durum' not in kullanici_sutunlar:
+        c.execute("ALTER TABLE kullanicilar ADD COLUMN durum TEXT DEFAULT 'Aktif'")
+
+    # Varsayılan Admin Hesabı
     c.execute("SELECT COUNT(*) FROM kullanicilar WHERE kullanici_adi = 'admin'")
     if c.fetchone()[0] == 0:
         c.execute("""
@@ -111,8 +119,8 @@ st.markdown("""
         background-color: #131c2e; border: 1px solid #1e2a45;
         border-radius: 14px; padding: 20px;
     }
-    .card-value { font-size: 26px; font-weight: 700; color: #ffffff; }
-    .card-label { font-size: 13px; color: #94a3b8; }
+    .card-value { font-size: 24px; font-weight: 700; color: #ffffff; }
+    .card-label { font-size: 12px; color: #94a3b8; }
     
     .sidebar-user-box {
         margin-top: 20px; padding: 12px; background-color: #131c2e;
@@ -213,7 +221,7 @@ if not st.session_state['logged_in']:
                     else:
                         st.error("Kullanıcı adı veya şifre hatalı!")
                         
-        # TAB 2: SADELEŞTİRİLMİŞ KAYIT OL (ROL SEÇİMİ YOK)
+        # TAB 2: KAYIT OL
         with tab_kayit:
             with st.form("register_form"):
                 new_ad_soyad = st.text_input("Ad Soyad*")
@@ -226,7 +234,6 @@ if not st.session_state['logged_in']:
                     if new_username and new_password and new_ad_soyad and new_tel:
                         try:
                             cursor = conn.cursor()
-                            # Dışarıdan kaydolana Varsayılan Rol: Personel, Durum: Onay Bekliyor
                             cursor.execute("""
                                 INSERT INTO kullanicilar (kullanici_adi, sifre, ad_soyad, telefon, rol, durum) 
                                 VALUES (?, ?, ?, ?, ?, ?)
@@ -238,19 +245,17 @@ if not st.session_state['logged_in']:
                     else:
                         st.warning("Lütfen tüm alanları doldurun.")
 
-        # TAB 3: MİSAFİR / GÖZ ATMA MODU (DÜZENLEME YETKİSİ YOK)
+        # TAB 3: MİSAFİR MODU
         with tab_gozat:
-            st.info("ℹ️ Bu alanda standart proje ve tesisat fiyat tarifeleri salt-okunur olarak görüntülenmektedir.")
-            
-            # Fiyat örneği/tarife tablosu (Örnek Genel Bilgiler)
+            st.info("ℹ️ Bu alanda genel hizmet ve referans proje bilgileri salt-okunur olarak görüntülenmektedir.")
             df_kayitlar_public = pd.read_sql_query("SELECT seri_no, armadas_surec_adimi, toplam_bedel, durum FROM kayitlar LIMIT 10", conn)
             if not df_kayitlar_public.empty:
-                st.subheader("📋 Genel Hizmet Kalemleri & Referans Projeler")
+                st.subheader("📋 Referans Projeler ve Süreçler")
                 st.dataframe(df_kayitlar_public, use_container_width=True, hide_index=True)
             else:
-                st.write("Henüz yayınlanmış genel bir fiyat tarifesi bulunmuyor.")
+                st.write("Henüz yayınlanmış genel bir proje kaydı bulunmuyor.")
 
-    st.stop() # Giriş yapılmadıysa uygulamanın devamını çalıştırma
+    st.stop()
 
 # ==========================================
 # SOL MENÜ (SIDEBAR) & OTURUM KARTI
@@ -269,12 +274,8 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    sayfa_secenekleri = ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Kullanıcı Onayları & Ayarlar"]
-    sayfa = st.radio(
-        "",
-        sayfa_secenekleri,
-        label_visibility="collapsed"
-    )
+    sayfa_secenekleri = ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar & Analiz", "Kullanıcı Onayları & Ayarlar"]
+    sayfa = st.radio("", sayfa_secenekleri, label_visibility="collapsed")
     
     st.markdown(f"""
     <div class="sidebar-user-box">
@@ -314,7 +315,7 @@ if sayfa == "Dashboard":
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown(f'<div class="dashboard-card"><div class="card-value">{toplam_kayit}</div><div class="card-label">Toplam Kayıt</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="dashboard-card"><div class="card-value">{toplam_kayit}</div><div class="card-label">Toplam Proje</div></div>', unsafe_allow_html=True)
     with c2:
         st.markdown(f'<div class="dashboard-card"><div class="card-value">₺{toplam_alinan:,.0f}</div><div class="card-label">Toplanan Alacak</div></div>', unsafe_allow_html=True)
     with c3:
@@ -380,11 +381,10 @@ elif sayfa == "Kayıtlar":
     st.dataframe(df_kayitlar, use_container_width=True, hide_index=True)
 
 # ==========================================
-# SAYFA 3: USTALAR (YÖNETİCİ & YARDIMCISI DÜZENLEYEBİLİR)
+# SAYFA 3: USTALAR
 # ==========================================
 elif sayfa == "Ustalar":
     st.title("Usta Yönetim Paneli")
-    
     tab_usta_liste, tab_usta_ekle = st.tabs(["👥 Usta Listesi & İşlemler", "➕ Yeni Usta Ekle"])
     
     with tab_usta_ekle:
@@ -457,29 +457,113 @@ elif sayfa == "Ustalar":
                                     cursor = conn.cursor()
                                     cursor.execute("DELETE FROM ustalar WHERE id=?", (usta['id'],))
                                     conn.commit()
-                                    st.warning("Usta sistemden silindi!")
+                                    st.warning("Usta silindi!")
                                     st.rerun()
                         else:
-                            st.warning("Usta bilgilerini düzenleme yetkiniz yok.")
+                            st.warning("Düzenleme yetkiniz yok.")
         else:
             st.info("Kayıtlı usta bulunamadı.")
 
 # ==========================================
-# SAYFA 4: RAPORLAR
+# SAYFA 4: RAPORLAR VE ZAMAN BAZLI ANALİZLER (YENİ EKLEME)
 # ==========================================
-elif sayfa == "Raporlar":
-    st.title("Mali Raporlar & Dışa Aktar")
+elif sayfa == "Raporlar & Analiz":
+    st.title("📊 Mali & Dönemsel Raporlama")
+    
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     
-    if not df_kayitlar.empty:
+    if df_kayitlar.empty:
+        st.info("Raporlama yapılacak henüz bir proje kaydı bulunmuyor.")
+    else:
+        # Tarih formatını pandas datetime'a çevir
+        df_kayitlar['proje_tarihi_dt'] = pd.to_datetime(df_kayitlar['proje_tarihi'], errors='coerce')
+        
+        # Filtre Seçenekleri
+        col_r1, col_r2 = st.columns([2, 2])
+        with col_r1:
+            zaman_filtresi = st.selectbox(
+                "📅 Raporlama Periyodu Seçin",
+                ["Bu Hafta (Son 7 Gün)", "Bu Ay (Son 30 Gün)", "Tüm Zamanlar", "Özel Tarih Aralığı"]
+            )
+        
+        bugun = datetime.now().date()
+        
+        if zaman_filtresi == "Bu Hafta (Son 7 Gün)":
+            baslangic_tarihi = bugun - timedelta(days=7)
+            bitis_tarihi = bugun
+        elif zaman_filtresi == "Bu Ay (Son 30 Gün)":
+            baslangic_tarihi = bugun - timedelta(days=30)
+            bitis_tarihi = bugun
+        elif zaman_filtresi == "Özel Tarih Aralığı":
+            with col_r2:
+                tarih_araligi = st.date_input("Tarih Aralığı", [bugun - timedelta(days=30), bugun])
+                if len(tarih_araligi) == 2:
+                    baslangic_tarihi, bitis_tarihi = tarih_araligi[0], tarih_araligi[1]
+                else:
+                    baslangic_tarihi, bitis_tarihi = bugun - timedelta(days=30), bugun
+        else:
+            baslangic_tarihi = pd.to_datetime(df_kayitlar['proje_tarihi_dt']).min().date()
+            bitis_tarihi = bugun
+
+        # Filtre Uygulama
+        df_filtered = df_kayitlar[
+            (df_kayitlar['proje_tarihi_dt'].dt.date >= baslangic_tarihi) & 
+            (df_kayitlar['proje_tarihi_dt'].dt.date <= bitis_tarihi)
+        ]
+
+        st.markdown("---")
+        
+        # Özet Metrik Kartları
+        m1, m2, m3, m4 = st.columns(4)
+        r_proje_sayisi = len(df_filtered)
+        r_toplam_bedel = df_filtered['toplam_bedel'].sum()
+        r_toplam_alinan = df_filtered['alinan_tutar'].sum()
+        r_toplam_kalan = df_filtered['kalan_tutar'].sum()
+
+        with m1:
+            st.markdown(f'<div class="dashboard-card"><div class="card-value">{r_proje_sayisi}</div><div class="card-label">Dönemdeki Proje Sayısı</div></div>', unsafe_allow_html=True)
+        with m2:
+            st.markdown(f'<div class="dashboard-card"><div class="card-value">₺{r_toplam_bedel:,.0f}</div><div class="card-label">Dönem Cirosu / Bedel</div></div>', unsafe_allow_html=True)
+        with m3:
+            st.markdown(f'<div class="dashboard-card"><div class="card-value">₺{r_toplam_alinan:,.0f}</div><div class="card-label">Tahsil Edilen</div></div>', unsafe_allow_html=True)
+        with m4:
+            st.markdown(f'<div class="dashboard-card"><div class="card-value">₺{r_toplam_kalan:,.0f}</div><div class="card-label">Kalan Alacak</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Görsel Grafikler & Detaylar
+        col_g1, col_g2 = st.columns([2, 1])
+        
+        with col_g1:
+            st.subheader("📈 Günlük / Dönemsel Ciro Trendi")
+            if not df_filtered.empty:
+                chart_data = df_filtered.groupby('proje_tarihi')['toplam_bedel'].sum().reset_index()
+                chart_data = chart_data.set_index('proje_tarihi')
+                st.bar_chart(chart_data)
+            else:
+                st.write("Seçilen tarih aralığında veri yok.")
+
+        with col_g2:
+            st.subheader("🔧 Usta Bazlı İş Dağılımı")
+            if not df_filtered.empty:
+                usta_dist = df_filtered['usta_adi'].value_counts()
+                st.dataframe(usta_dist, use_container_width=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.subheader("📋 Seçilen Döneme Ait Proje Listesi")
+        st.dataframe(df_filtered[['seri_no', 'proje_tarihi', 'musteri_adi', 'usta_adi', 'toplam_bedel', 'alinan_tutar', 'kalan_tutar', 'armadas_surec_adimi']], use_container_width=True, hide_index=True)
+
+        # Excel İndirme Butonları
+        st.markdown("---")
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_kayitlar.to_excel(writer, index=False, sheet_name='Proje Kayitlari')
+            df_filtered.drop(columns=['proje_tarihi_dt'], errors='ignore').to_excel(writer, index=False, sheet_name='Filtrelenmis Rapor')
+            df_kayitlar.drop(columns=['proje_tarihi_dt'], errors='ignore').to_excel(writer, index=False, sheet_name='Tum Kayitlar')
         
         st.download_button(
-            label="📊 Tüm Verileri Excel Olarak İndir",
+            label="📊 Seçilen Dönem Raporunu Excel Olarak İndir",
             data=output.getvalue(),
-            file_name=f"gunes_dogalgaz_rapor_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            file_name=f"gunes_dogalgaz_rapor_{baslangic_tarihi}_ile_{bitis_tarihi}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
@@ -497,7 +581,6 @@ elif sayfa == "Kullanıcı Onayları & Ayarlar":
         st.subheader("📋 Kayıtlı Kullanıcılar ve İzinler")
         
         for idx, k_user in df_kullanicilar.iterrows():
-            # Kendi hesabını düzenlemesini engelle veya uyar
             is_self = k_user['kullanici_adi'] == user_info['kullanici_adi']
             
             with st.expander(f"👤 {k_user['ad_soyad']} (@{k_user['kullanici_adi']}) - Rol: {k_user['rol']} | Durum: {k_user['durum']}"):
@@ -509,12 +592,10 @@ elif sayfa == "Kullanıcı Onayları & Ayarlar":
                         st.write(f"**Kullanıcı Adı:** {k_user['kullanici_adi']}")
                     
                     with col_u2:
-                        # Rol seçenekleri: Yönetici, Yönetici Yardımcısı, Personel
                         rol_index = 0 if k_user['rol'] == "Yönetici" else (1 if k_user['rol'] == "Yönetici Yardımcısı" else 2)
                         yeni_rol = st.selectbox("Atanan Rol", ["Yönetici", "Yönetici Yardımcısı", "Personel"], index=rol_index, disabled=is_self)
                         
                     with col_u3:
-                        # Durum seçenekleri: Onay Bekliyor, Aktif, Pasif
                         durum_list = ["Onay Bekliyor", "Aktif", "Pasif"]
                         durum_index = durum_list.index(k_user['durum']) if k_user['durum'] in durum_list else 0
                         yeni_durum = st.selectbox("Erişim Durumu", durum_list, index=durum_index, disabled=is_self)
