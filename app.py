@@ -79,13 +79,13 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
 
-    /* Ana Arka Plan (Koyu Gece Mavisi) */
+    /* Ana Arka Plan */
     .stApp {
         background-color: #0b101d;
         color: #f3f4f6;
     }
     
-    /* Sol Sidebar (Görsel 1 Birebir Mimari) */
+    /* Sol Sidebar */
     [data-testid="stSidebar"] {
         background-color: #0d1424;
         border-right: 1px solid #1a233a;
@@ -122,7 +122,7 @@ st.markdown("""
         color: #64748b;
     }
 
-    /* Görsel 2: Dashboard Kart Tasarımları */
+    /* Dashboard Kart Tasarımları */
     .dashboard-card {
         background-color: #131c2e;
         border: 1px solid #1e2a45;
@@ -145,7 +145,6 @@ st.markdown("""
         margin-bottom: 16px;
     }
     
-    /* İkon Arka Plan Renkleri (Görsel 2) */
     .icon-blue { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; }
     .icon-green { background-color: rgba(16, 185, 129, 0.15); color: #34d399; }
     .icon-yellow { background-color: rgba(245, 158, 11, 0.15); color: #fbbf24; }
@@ -174,7 +173,7 @@ st.markdown("""
     .sub-yellow { color: #fbbf24; }
     .sub-purple { color: #c084fc; }
 
-    /* Sidebar Alt Profil Alanı (Görsel 1) */
+    /* Sidebar Alt Profil Alanı */
     .sidebar-user-box {
         margin-top: 40px;
         padding: 12px;
@@ -208,7 +207,6 @@ st.markdown("""
         color: #64748b;
     }
 
-    /* Custom Input & Button Styling */
     .stButton>button {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: #000;
@@ -220,36 +218,43 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- PDF OLUŞTURUCU ---
+# --- TÜRKÇE KARAKTER DÜZELTİCİLİ PDF OLUŞTURUCU ---
+def tr_fix(text):
+    """Tüm Türkçe karakterleri PDF'in desteklediği karakterlere çevirir."""
+    if not text:
+        return ""
+    text = str(text)
+    tr_map = str.maketrans("çğışöüÇĞİŞÖÜ", "cgisouCGISOU")
+    return text.translate(tr_map)
+
 def generate_usta_pdf(usta_adi, df_usta):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", 'B', 15)
-    pdf.cell(190, 10, f"Gunes Dogalgaz - Usta Raporu: {usta_adi}", ln=True, align='C')
+    pdf.cell(190, 10, tr_fix(f"Gunes Dogalgaz - Usta Raporu: {usta_adi}"), ln=True, align='C')
     pdf.ln(8)
     
     pdf.set_font("Helvetica", 'B', 9)
-    pdf.cell(25, 7, "Tarih", 1)
-    pdf.cell(55, 7, "Musteri", 1)
-    pdf.cell(35, 7, "Alinan (TL)", 1)
-    pdf.cell(35, 7, "Kalan (TL)", 1)
-    pdf.cell(40, 7, "Armadas Durumu", 1)
+    pdf.cell(25, 7, tr_fix("Tarih"), 1)
+    pdf.cell(55, 7, tr_fix("Musteri"), 1)
+    pdf.cell(35, 7, tr_fix("Alinan (TL)"), 1)
+    pdf.cell(35, 7, tr_fix("Kalan (TL)"), 1)
+    pdf.cell(40, 7, tr_fix("Armadas Durumu"), 1)
     pdf.ln()
     
     pdf.set_font("Helvetica", '', 8)
     for _, row in df_usta.iterrows():
-        pdf.cell(25, 7, str(row['proje_tarihi']), 1)
-        pdf.cell(55, 7, str(row['musteri_adi'])[:24], 1)
-        pdf.cell(35, 7, f"{row['alinan_tutar']:,.2f}", 1)
-        pdf.cell(35, 7, f"{row['kalan_tutar']:,.2f}", 1)
-        pdf.cell(40, 7, str(row.get('armadas_surec_adimi', '-'))[:20], 1)
+        pdf.cell(25, 7, tr_fix(str(row.get('proje_tarihi', ''))), 1)
+        pdf.cell(55, 7, tr_fix(str(row.get('musteri_adi', ''))[:24]), 1)
+        pdf.cell(35, 7, f"{row.get('alinan_tutar', 0):,.2f}", 1)
+        pdf.cell(35, 7, f"{row.get('kalan_tutar', 0):,.2f}", 1)
+        pdf.cell(40, 7, tr_fix(str(row.get('armadas_surec_adimi', '-'))[:20]), 1)
         pdf.ln()
         
     return pdf.output()
 
-# --- SOL MENÜ (SIDEBAR - Görsel 1 Birebir) ---
+# --- SOL MENÜ (SIDEBAR) ---
 with st.sidebar:
-    # Üst Logo ve Başlık
     st.markdown("""
     <div class="brand-container">
         <div class="brand-icon">🔥</div>
@@ -260,14 +265,12 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    # Navigasyon Menüsü
     sayfa = st.radio(
         "",
         ["Dashboard", "Kayıtlar", "Ustalar", "Raporlar", "Ayarlar"],
         label_visibility="collapsed"
     )
     
-    # Alt Kullanıcı Profil Kartı
     st.markdown("""
     <div class="sidebar-user-box">
         <div class="user-avatar">YÖ</div>
@@ -281,7 +284,7 @@ with st.sidebar:
 conn = get_db()
 
 # ==========================================
-# SAYFA 1: DASHBOARD (Görsel 2 Birebir Kartlar)
+# SAYFA 1: DASHBOARD
 # ==========================================
 if sayfa == "Dashboard":
     col_head1, col_head2 = st.columns([3, 1])
@@ -292,7 +295,6 @@ if sayfa == "Dashboard":
         st.write("")
         yeni_kayit_modal = st.button("➕ Yeni Proje Kaydı", use_container_width=True)
 
-    # Verileri Çek
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     df_ustalar = pd.read_sql_query("SELECT * FROM ustalar WHERE durum='Aktif'", conn)
     
@@ -302,10 +304,8 @@ if sayfa == "Dashboard":
     bekleyen_kayit_sayisi = len(df_kayitlar[df_kayitlar['kalan_tutar'] > 0]) if not df_kayitlar.empty else 0
     aktif_usta = len(df_ustalar)
 
-    # GÖRSEL 2: 4'LÜ METRİK KARTLARI DÜZENİ
     c1, c2, c3, c4 = st.columns(4)
     
-    # 1. Toplam Kayıt Kartı
     with c1:
         st.markdown(f"""
         <div class="dashboard-card">
@@ -318,7 +318,6 @@ if sayfa == "Dashboard":
         </div>
         """, unsafe_allow_html=True)
         
-    # 2. Bu Ay Alınan (Fiyat) Kartı
     with c2:
         st.markdown(f"""
         <div class="dashboard-card">
@@ -331,7 +330,6 @@ if sayfa == "Dashboard":
         </div>
         """, unsafe_allow_html=True)
         
-    # 3. Bekleyen Ödeme (Fiyat) Kartı
     with c3:
         st.markdown(f"""
         <div class="dashboard-card">
@@ -344,7 +342,6 @@ if sayfa == "Dashboard":
         </div>
         """, unsafe_allow_html=True)
         
-    # 4. Aktif Usta Kartı
     with c4:
         st.markdown(f"""
         <div class="dashboard-card">
@@ -359,7 +356,6 @@ if sayfa == "Dashboard":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # DÜZENLENEBİLİR FORM ALANI
     if yeni_kayit_modal or st.session_state.get('form_acik', False):
         st.session_state['form_acik'] = True
         with st.expander("📝 Yeni Proje & Fiyat Kaydı Ekle", expanded=True):
@@ -422,7 +418,6 @@ if sayfa == "Dashboard":
                     else:
                         st.error("Lütfen Müşteri Adı alanını doldurun.")
 
-    # SON PROJELER VE FİYAT TABLOSU
     st.subheader("Son Eklenen Projeler")
     if not df_kayitlar.empty:
         gosterilecek = ['seri_no', 'musteri_adi', 'usta_adi', 'armadas_surec_adimi', 'toplam_bedel', 'alinan_tutar', 'kalan_tutar']
