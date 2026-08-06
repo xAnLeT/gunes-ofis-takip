@@ -47,20 +47,18 @@ def init_db():
                     durum TEXT
                 )''')
     
-    # Varsayılan Ustaları Ekle (Yoksa)
-    varsayilan_ustalar = [
-        ("Mehmet Usta", "Doğalgaz Tesisatı", "0532 111 2233", "Aktif"),
-        ("Ali Usta", "Kombi & Kazan", "0533 222 3344", "Aktif"),
-        ("Hüseyin Usta", "Doğalgaz Tesisatı", "0534 333 4455", "Aktif"),
-        ("Kadir Usta", "Boru Döşeme", "0535 444 5566", "Aktif"),
-        ("Serkan Usta", "Kombi Bakım", "0536 555 6677", "Pasif"),
-        ("Emre Usta", "Doğalgaz Tesisatı", "0537 666 7788", "Aktif")
-    ]
-    for usta in varsayilan_ustalar:
-        try:
-            c.execute("INSERT INTO ustalar (ad_soyad, uzmanlik, telefon, durum) VALUES (?, ?, ?, ?)", usta)
-        except sqlite3.IntegrityError:
-            pass
+    # Varsayılan Ustaları Ekle (Tablo boşsa ilk kurulum için)
+    c.execute("SELECT COUNT(*) FROM ustalar")
+    if c.fetchone()[0] == 0:
+        varsayilan_ustalar = [
+            ("Mehmet Usta", "Doğalgaz Tesisatı", "0532 111 2233", "Aktif"),
+            ("Ali Usta", "Kombi & Kazan", "0533 222 3344", "Aktif")
+        ]
+        for usta in varsayilan_ustalar:
+            try:
+                c.execute("INSERT INTO ustalar (ad_soyad, uzmanlik, telefon, durum) VALUES (?, ?, ?, ?)", usta)
+            except sqlite3.IntegrityError:
+                pass
             
     conn.commit()
     conn.close()
@@ -108,7 +106,6 @@ st.markdown("""
         display: inline-block;
     }
     .badge-success { background-color: rgba(63, 185, 80, 0.15); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.4); }
-    .badge-warning { background-color: rgba(210, 153, 34, 0.15); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.4); }
     .badge-danger { background-color: rgba(248, 81, 73, 0.15); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.4); }
 
     /* Buton Tasarımları */
@@ -311,61 +308,130 @@ elif sayfa == "Kayıtlar":
     st.dataframe(df_kayitlar, use_container_width=True, hide_index=True)
 
 # ==========================================
-# SAYFA 3: USTALAR
+# SAYFA 3: USTALAR (GÜNCELLENDİ)
 # ==========================================
 elif sayfa == "Ustalar":
-    st.title("Ustalar ve Performans Özeti")
+    st.title("Ustalar Yönetimi & Performans Özetleri")
+    
+    # --- USTA EKLE / DÜZENLE / SİL PANELLERİ ---
+    col_u1, col_u2 = st.columns(2)
+    
+    with col_u1:
+        with st.expander("➕ Yeni Usta Ekle", expanded=False):
+            with st.form("yeni_usta_form", clear_on_submit=True):
+                y_ad = st.text_input("Usta Adı Soyadı*")
+                y_uzmanlik = st.text_input("Uzmanlık / Alanı", "Doğalgaz Tesisatı")
+                y_tel = st.text_input("Telefon", "05XX XXX XX XX")
+                y_durum = st.selectbox("Durum", ["Aktif", "Pasif"])
+                
+                btn_u_ekle = st.form_submit_button("Ustayı Kaydet")
+                if btn_u_ekle:
+                    if y_ad.strip():
+                        try:
+                            cursor = conn.cursor()
+                            cursor.execute("INSERT INTO ustalar (ad_soyad, uzmanlik, telefon, durum) VALUES (?, ?, ?, ?)",
+                                           (y_ad.strip(), y_uzmanlik, y_tel, y_durum))
+                            conn.commit()
+                            st.success(f"'{y_ad}' başarıyla eklendi!")
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error("Bu isimde bir usta zaten sistemde kayıtlı!")
+                    else:
+                        st.error("Lütfen Usta Adı Soyadı alanını doldurun.")
+
+    with col_u2:
+        with st.expander("✏️ Usta Düzenle veya Sil", expanded=False):
+            df_u_edit = pd.read_sql_query("SELECT * FROM ustalar", conn)
+            if not df_u_edit.empty:
+                secili_u_ad = st.selectbox("İşlem Yapılacak Usta", df_u_edit['ad_soyad'].tolist())
+                u_row = df_u_edit[df_u_edit['ad_soyad'] == secili_u_ad].iloc[0]
+                
+                with st.form("duzenle_usta_form"):
+                    e_ad = st.text_input("Ad Soyad", value=u_row['ad_soyad'])
+                    e_uzmanlik = st.text_input("Uzmanlık", value=u_row['uzmanlik'])
+                    e_tel = st.text_input("Telefon", value=u_row['telefon'])
+                    e_durum = st.selectbox("Durum", ["Aktif", "Pasif"], index=0 if u_row['durum'] == "Aktif" else 1)
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        btn_guncelle = st.form_submit_button("💾 Bilgileri Güncelle")
+                    with col_btn2:
+                        btn_sil = st.form_submit_button("🗑️ Ustayı Sil")
+                    
+                    if btn_guncelle:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE ustalar SET ad_soyad=?, uzmanlik=?, telefon=?, durum=? WHERE id=?",
+                                       (e_ad.strip(), e_uzmanlik, e_tel, e_durum, int(u_row['id'])))
+                        # Eski kayıtlarındaki usta adını da güncelle
+                        cursor.execute("UPDATE kayitlar SET usta_adi=? WHERE usta_adi=?", (e_ad.strip(), secili_u_ad))
+                        conn.commit()
+                        st.success("Usta bilgileri güncellendi!")
+                        st.rerun()
+                        
+                    if btn_sil:
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM ustalar WHERE id=?", (int(u_row['id']),))
+                        conn.commit()
+                        st.warning(f"'{secili_u_ad}' sistemden silindi!")
+                        st.rerun()
+            else:
+                st.info("Sistemde düzenlenecek usta bulunamadı.")
+
+    st.markdown("---")
+    
+    # --- USTA KARTLARI LİSTESİ ---
     df_ustalar = pd.read_sql_query("SELECT * FROM ustalar", conn)
     df_kayitlar = pd.read_sql_query("SELECT * FROM kayitlar", conn)
     
-    # 3'lü Grid Kart Mimarisi
-    cols = st.columns(3)
-    for idx, usta in df_ustalar.iterrows():
-        col = cols[idx % 3]
-        u_isleri = df_kayitlar[df_kayitlar['usta_adi'] == usta['ad_soyad']]
-        toplam_is = len(u_isleri)
-        alinan = u_isleri['alinan_tutar'].sum() if not u_isleri.empty else 0
-        kalan = u_isleri['kalan_tutar'].sum() if not u_isleri.empty else 0
-        
-        tamamlanan = len(u_isleri[u_isleri['durum'] == 'Tamamlandı'])
-        bekleyen = len(u_isleri[u_isleri['durum'] != 'Tamamlandı'])
-        
-        status_badge = '<span class="badge badge-success">Aktif</span>' if usta['durum'] == 'Aktif' else '<span class="badge badge-danger">Pasif</span>'
-        
-        with col:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3 style="margin:0; color:#58a6ff;">{usta['ad_soyad']}</h3>
-                    <div>{status_badge}</div>
-                </div>
-                <p style="color:#8b949e; font-size:12px; margin-bottom:10px;">🔧 {usta['uzmanlik']} | 📞 {usta['telefon']}</p>
-                <hr style="border-color:#30363d;">
-                <div style="display:flex; justify-content:space-between;">
-                    <div>
-                        <div class="metric-title">TOPLAM İŞ</div>
-                        <div style="font-size:18px; font-weight:bold;">{toplam_is}</div>
-                        <div style="font-size:11px; color:#3fb950;">{tamamlanan} tamamlandı</div>
-                    </div>
-                    <div>
-                        <div class="metric-title">ALINAN TUTAR</div>
-                        <div style="font-size:18px; font-weight:bold; color:#3fb950;">₺{alinan:,.0f}</div>
-                        <div style="font-size:11px; color:#d29922;">₺{kalan:,.0f} kalan</div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    if not df_ustalar.empty:
+        cols = st.columns(3)
+        for idx, usta in df_ustalar.iterrows():
+            col = cols[idx % 3]
+            u_isleri = df_kayitlar[df_kayitlar['usta_adi'] == usta['ad_soyad']]
+            toplam_is = len(u_isleri)
+            alinan = u_isleri['alinan_tutar'].sum() if not u_isleri.empty else 0
+            kalan = u_isleri['kalan_tutar'].sum() if not u_isleri.empty else 0
             
-            # PDF Raporlama Butonu
-            if not u_isleri.empty:
-                pdf_bytes = generate_usta_pdf(usta['ad_soyad'], u_isleri)
-                st.download_button(
-                    label=f"📄 {usta['ad_soyad']} PDF Raporu İndir",
-                    data=bytes(pdf_bytes),
-                    file_name=f"{usta['ad_soyad']}_rapor.pdf",
-                    mime="application/pdf",
-                    key=f"pdf_{usta['id']}"
-                )
+            tamamlanan = len(u_isleri[u_isleri['durum'] == 'Tamamlandı'])
+            
+            status_badge = '<span class="badge badge-success">Aktif</span>' if usta['durum'] == 'Aktif' else '<span class="badge badge-danger">Pasif</span>'
+            
+            with col:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0; color:#58a6ff;">{usta['ad_soyad']}</h3>
+                        <div>{status_badge}</div>
+                    </div>
+                    <p style="color:#8b949e; font-size:12px; margin-bottom:10px;">🔧 {usta['uzmanlik']} | 📞 {usta['telefon']}</p>
+                    <hr style="border-color:#30363d;">
+                    <div style="display:flex; justify-content:space-between;">
+                        <div>
+                            <div class="metric-title">TOPLAM İŞ</div>
+                            <div style="font-size:18px; font-weight:bold;">{toplam_is}</div>
+                            <div style="font-size:11px; color:#3fb950;">{tamamlanan} tamamlandı</div>
+                        </div>
+                        <div>
+                            <div class="metric-title">ALINAN TUTAR</div>
+                            <div style="font-size:18px; font-weight:bold; color:#3fb950;">₺{alinan:,.0f}</div>
+                            <div style="font-size:11px; color:#d29922;">₺{kalan:,.0f} kalan</div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # PDF Raporlama Butonu
+                if not u_isleri.empty:
+                    pdf_bytes = generate_usta_pdf(usta['ad_soyad'], u_isleri)
+                    st.download_button(
+                        label=f"📄 {usta['ad_soyad']} PDF Raporu İndir",
+                        data=bytes(pdf_bytes),
+                        file_name=f"{usta['ad_soyad']}_rapor.pdf",
+                        mime="application/pdf",
+                        key=f"pdf_{usta['id']}"
+                    )
+    else:
+        st.info("Henüz eklenmiş bir usta yok. Yukarıdaki 'Yeni Usta Ekle' kutusundan ekleyebilirsiniz.")
 
 # ==========================================
 # SAYFA 4: RAPORLAR
