@@ -510,7 +510,7 @@ elif sayfa == "Düzenleme":
                     odeme_index = ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"].index(row_data['odeme_yontemi']) if row_data['odeme_yontemi'] in ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"] else 0
                     e_odeme_tipi = st.selectbox("Ödeme Tipi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"], index=odeme_index)
 
-                with col_f3:
+                with col_e3:
                     e_usta = st.selectbox("Sorumlu Usta", u_options, index=u_options.index(row_data['usta_adi']) if row_data['usta_adi'] in u_options else 0)
                     armadas_opts = ["Armadaş Dijital Onay Bekliyor", "Onay Bekliyor", "Armadaş Eksik / Red Aldı", "Gaz Açıldı / Müşteriye Teslim Edildi", "Randevu Alındı"]
                     arm_index = armadas_opts.index(row_data['armadas_surec_adimi']) if row_data['armadas_surec_adimi'] in armadas_opts else 0
@@ -701,7 +701,6 @@ elif sayfa == "Raporlar & Analiz":
                     st.rerun()
 
             with col_btn2:
-                # Tablodan seçilen kutucuklara göre toplu kaldırma / silme butonu
                 if st.button("🗑️ Seçili Raporları / Kayıtları Listeden Kaldır", type="secondary", use_container_width=True):
                     secilenler = edited_rapor_df[edited_rapor_df['Seç'] == True]
                     if not secilenler.empty:
