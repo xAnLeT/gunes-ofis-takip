@@ -1,5 +1,6 @@
 import io
 import re
+import secrets
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
@@ -99,6 +100,25 @@ def can_manage_records(role: str) -> bool:
     return role in {"admin", "yonetici", "yonetici_yardimcisi"}
 
 
+def reset_human_check() -> None:
+    """Dış servise gerek duymayan, kısa süreli bot engeli için yeni soru üretir."""
+    st.session_state.human_first = secrets.randbelow(8) + 2
+    st.session_state.human_second = secrets.randbelow(8) + 2
+
+
+def human_check_question() -> str:
+    if "human_first" not in st.session_state or "human_second" not in st.session_state:
+        reset_human_check()
+    return f"🛡️ İnsan doğrulaması: {st.session_state.human_first} + {st.session_state.human_second} = ?"
+
+
+def is_human(answer: str) -> bool:
+    try:
+        return int(answer.strip()) == st.session_state.human_first + st.session_state.human_second
+    except (TypeError, ValueError):
+        return False
+
+
 def render_login() -> None:
     """Uygulama açılmadan önce gösterilen rol bazlı giriş ekranı."""
     st.markdown("""
@@ -122,16 +142,18 @@ def render_login() -> None:
             with st.form("login_form"):
                 username = st.text_input("Kullanıcı adı", autocomplete="username")
                 password = st.text_input("Şifre", type="password", autocomplete="current-password")
+                login_human_answer = st.text_input(human_check_question(), placeholder="Sonucu yazın")
                 submitted = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
             if submitted:
                 user = st.session_state.users.get(username.strip().lower())
-                if user and password == user["password"]:
+                if not is_human(login_human_answer):
+                    st.error("İnsan doğrulaması hatalı. Yeni soruyu cevaplayın.")
+                    reset_human_check()
+                elif user and password == user["password"]:
                     st.session_state.current_user = {"username": username.strip().lower(), **user}
                     st.rerun()
                 else:
                     st.error("Kullanıcı adı veya şifre hatalı.")
-            with st.expander("İlk kurulum demo hesapları"):
-                st.caption("Admin: admin / admin123 · Yönetici: yonetici / yonetici123 · Yardımcı: yardimci / yardimci123 · Personel: personel / personel123")
         with register_tab:
             st.caption("Yeni hesaplar Personel rolüyle açılır. Admin, Ayarlar alanından rolü güncelleyebilir.")
             with st.form("register_form", clear_on_submit=True):
@@ -139,10 +161,14 @@ def render_login() -> None:
                 register_username = st.text_input("Kullanıcı adı *", autocomplete="username")
                 register_password = st.text_input("Şifre *", type="password", autocomplete="new-password")
                 register_confirm = st.text_input("Şifre tekrar *", type="password", autocomplete="new-password")
+                register_human_answer = st.text_input(human_check_question(), placeholder="Sonucu yazın", key="register_human_answer")
                 registered = st.form_submit_button("Hesap Oluştur", type="primary", use_container_width=True)
             if registered:
                 key = register_username.strip().lower()
-                if not register_name.strip() or not key or not register_password:
+                if not is_human(register_human_answer):
+                    st.error("İnsan doğrulaması hatalı. Yeni soruyu cevaplayın.")
+                    reset_human_check()
+                elif not register_name.strip() or not key or not register_password:
                     st.error("Ad soyad, kullanıcı adı ve şifre zorunludur.")
                 elif len(key) < 3 or not re.fullmatch(r"[a-z0-9._-]+", key):
                     st.error("Kullanıcı adı en az 3 karakter olmalı; yalnızca küçük harf, rakam, nokta, alt çizgi ve tire içerebilir.")
