@@ -1,5 +1,5 @@
+from datetime import datetime, timedelta
 import sqlite3
-from datetime import datetime
 import pandas as pd
 import streamlit as st
 
@@ -52,7 +52,7 @@ def init_db():
   conn = get_db()
   c = conn.cursor()
 
-  # 1. Kayıtlar Tablosu (Regülatör yok, diger_islemler var)
+  # 1. Kayıtlar Tablosu
   c.execute("""CREATE TABLE IF NOT EXISTS kayitlar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     seri_no TEXT,
@@ -110,6 +110,12 @@ def init_db():
     c.execute("ALTER TABLE kayitlar ADD COLUMN proje_ayi TEXT DEFAULT ''")
   if "notlar" not in kayitlar_sutunlar:
     c.execute("ALTER TABLE kayitlar ADD COLUMN notlar TEXT DEFAULT ''")
+  if "kolon_sayisi" not in kayitlar_sutunlar:
+    c.execute("ALTER TABLE kayitlar ADD COLUMN kolon_sayisi INTEGER DEFAULT 0")
+  if "ic_tesisat_sayisi" not in kayitlar_sutunlar:
+    c.execute(
+        "ALTER TABLE kayitlar ADD COLUMN ic_tesisat_sayisi INTEGER DEFAULT 0"
+    )
 
   # Admin Hesabı Kontrolü
   c.execute("SELECT COUNT(*) FROM kullanicilar WHERE kullanici_adi = 'admin'")
@@ -146,72 +152,6 @@ def init_db():
 
 init_db()
 
-# --- CSS / TASARIM ---
-st.markdown(
-    """
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-    .stApp { background-color: #0b101d; color: #f3f4f6; }
-    
-    [data-testid="stSidebar"] { 
-        background-color: #0d1424; 
-        border-right: 1px solid #1a233a; 
-        padding-top: 10px;
-    }
-    
-    [data-testid="stSidebar"] .stButton button {
-        width: 100%;
-        background-color: #131c2e;
-        color: #e2e8f0;
-        border: 1px solid #1e2a45;
-        border-radius: 12px;
-        padding: 12px 18px;
-        text-align: left;
-        font-weight: 500;
-        font-size: 14px;
-        margin-bottom: 6px;
-        transition: all 0.2s ease-in-out;
-    }
-    
-    [data-testid="stSidebar"] .stButton button:hover {
-        background-color: #1f293d;
-        color: #ffffff;
-        border-color: #f59e0b;
-    }
-
-    .brand-container { display: flex; align-items: center; gap: 12px; margin-bottom: 25px; padding: 0 10px; }
-    .brand-icon {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        width: 42px; height: 42px; border-radius: 10px;
-        display: flex; align-items: center; justify-content: center; font-size: 22px;
-    }
-    .brand-title { font-weight: 700; font-size: 16px; color: #ffffff; }
-    .brand-subtitle { font-size: 11px; color: #64748b; }
-
-    .dashboard-card {
-        background-color: #131c2e; border: 1px solid #1e2a45;
-        border-radius: 14px; padding: 20px;
-    }
-    .card-value { font-size: 24px; font-weight: 700; color: #ffffff; }
-    .card-label { font-size: 12px; color: #94a3b8; }
-    
-    .sidebar-user-box {
-        margin-top: 20px; padding: 12px; background-color: #131c2e;
-        border-radius: 12px; display: flex; align-items: center; gap: 12px;
-        border: 1px solid #1e2a45;
-    }
-    .user-avatar {
-        width: 38px; height: 38px; border-radius: 50%;
-        background-color: #1e293b; color: #f59e0b; font-weight: 700;
-        display: flex; align-items: center; justify-content: center;
-        border: 1px solid #f59e0b;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 # --- OTURUM (SESSION) YÖNETİMİ ---
 if "logged_in" not in st.session_state:
   st.session_state["logged_in"] = False
@@ -219,6 +159,8 @@ if "user_info" not in st.session_state:
   st.session_state["user_info"] = None
 if "current_page" not in st.session_state:
   st.session_state["current_page"] = "Dashboard"
+if "theme_mode" not in st.session_state:
+  st.session_state["theme_mode"] = "Karanlık Mod"
 
 conn = get_db()
 
@@ -330,7 +272,7 @@ izin_kullanici_yonetim = user_info.get("izin_kullanici_yonetim", False)
 is_admin = user_info.get("rol") == "Yönetici" or izin_kullanici_yonetim
 
 # ==========================================
-# SOL MENÜ (SİDEBAR)
+# SOL MENÜ (SİDEBAR) VE TEMA DEĞİŞTİRİCİ
 # ==========================================
 with st.sidebar:
   st.markdown(
@@ -345,6 +287,17 @@ with st.sidebar:
     """,
       unsafe_allow_html=True,
   )
+
+  # Tema Seçimi
+  st.session_state["theme_mode"] = st.radio(
+      "🎨 Tema Modu",
+      ["Karanlık Mod", "Aydınlık Mod"],
+      index=0
+      if st.session_state["theme_mode"] == "Karanlık Mod"
+      else 1,
+      horizontal=True,
+  )
+  st.markdown("---")
 
   if st.button("🗂️  Dashboard", use_container_width=True):
     st.session_state["current_page"] = "Dashboard"
@@ -373,7 +326,7 @@ with st.sidebar:
     <div class="sidebar-user-box">
         <div class="user-avatar">{u_ad[:2].upper() if u_ad else 'US'}</div>
         <div>
-            <div style="font-size:13px; font-weight:600; color:#fff;">{u_ad}</div>
+            <div style="font-size:13px; font-weight:600;">{u_ad}</div>
             <div style="font-size:11px; color:#f59e0b;">{u_rol}</div>
         </div>
     </div>
@@ -388,6 +341,59 @@ with st.sidebar:
     st.rerun()
 
 sayfa = st.session_state["current_page"]
+is_dark = st.session_state["theme_mode"] == "Karanlık Mod"
+
+# --- DİNAMİK CSS / TASARIM (TEMA UYUMLU) ---
+if is_dark:
+  css_style = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        .stApp { background-color: #0b101d; color: #f3f4f6; }
+        [data-testid="stSidebar"] { background-color: #0d1424; border-right: 1px solid #1a233a; padding-top: 10px; }
+        [data-testid="stSidebar"] .stButton button {
+            width: 100%; background-color: #131c2e; color: #e2e8f0; border: 1px solid #1e2a45;
+            border-radius: 12px; padding: 12px 18px; text-align: left; font-weight: 500; font-size: 14px;
+            margin-bottom: 6px; transition: all 0.2s ease-in-out;
+        }
+        [data-testid="stSidebar"] .stButton button:hover { background-color: #1f293d; color: #ffffff; border-color: #f59e0b; }
+        .brand-container { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding: 0 10px; }
+        .brand-icon { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .brand-title { font-weight: 700; font-size: 16px; color: #ffffff; }
+        .brand-subtitle { font-size: 11px; color: #64748b; }
+        .dashboard-card { background-color: #131c2e; border: 1px solid #1e2a45; border-radius: 14px; padding: 20px; }
+        .card-value { font-size: 24px; font-weight: 700; color: #ffffff; }
+        .card-label { font-size: 12px; color: #94a3b8; }
+        .sidebar-user-box { margin-top: 10px; padding: 12px; background-color: #131c2e; border-radius: 12px; display: flex; align-items: center; gap: 12px; border: 1px solid #1e2a45; color: #fff; }
+        .user-avatar { width: 38px; height: 38px; border-radius: 50%; background-color: #1e293b; color: #f59e0b; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 1px solid #f59e0b; }
+    </style>
+    """
+else:
+  css_style = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        .stApp { background-color: #f8fafc; color: #1e293b; }
+        [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e2e8f0; padding-top: 10px; }
+        [data-testid="stSidebar"] .stButton button {
+            width: 100%; background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;
+            border-radius: 12px; padding: 12px 18px; text-align: left; font-weight: 500; font-size: 14px;
+            margin-bottom: 6px; transition: all 0.2s ease-in-out;
+        }
+        [data-testid="stSidebar"] .stButton button:hover { background-color: #e2e8f0; color: #0f172a; border-color: #f59e0b; }
+        .brand-container { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding: 0 10px; }
+        .brand-icon { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .brand-title { font-weight: 700; font-size: 16px; color: #0f172a; }
+        .brand-subtitle { font-size: 11px; color: #64748b; }
+        .dashboard-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .card-value { font-size: 24px; font-weight: 700; color: #0f172a; }
+        .card-label { font-size: 12px; color: #64748b; }
+        .sidebar-user-box { margin-top: 10px; padding: 12px; background-color: #f1f5f9; border-radius: 12px; display: flex; align-items: center; gap: 12px; border: 1px solid #cbd5e1; color: #0f172a; }
+        .user-avatar { width: 38px; height: 38px; border-radius: 50%; background-color: #e2e8f0; color: #d97706; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 1px solid #d97706; }
+    </style>
+    """
+
+st.markdown(css_style, unsafe_allow_html=True)
 
 
 # ==========================================
@@ -401,6 +407,8 @@ def format_table_df(df_input):
         "Ay",
         "Müşteri Adı",
         "Sorumlu Usta",
+        "Kolon Sayısı",
+        "İç Tesisat",
         "Armadaş Durumu",
         "Diğer İşlemler",
         "Toplam Bedel (TL)",
@@ -421,6 +429,8 @@ def format_table_df(df_input):
       "proje_ayi": "Ay",
       "musteri_adi": "Müşteri Adı",
       "usta_adi": "Sorumlu Usta",
+      "kolon_sayisi": "Kolon Sayısı",
+      "ic_tesisat_sayisi": "İç Tesisat",
       "armadas_surec_adimi": "Armadaş Durumu",
       "diger_islemler": "Diğer İşlemler",
       "toplam_bedel": "Toplam Bedel (TL)",
@@ -437,6 +447,8 @@ def format_table_df(df_input):
       "Ay",
       "Müşteri Adı",
       "Sorumlu Usta",
+      "Kolon Sayısı",
+      "İç Tesisat",
       "Armadaş Durumu",
       "Diğer İşlemler",
       "Toplam Bedel (TL)",
@@ -526,6 +538,12 @@ if sayfa == "Dashboard":
           usta_adi = st.selectbox("Sorumlu Usta", u_options)
 
         with col_f2:
+          kolon_sayisi_in = st.number_input(
+              "Kolon Sayısı", min_value=0, step=1, value=0
+          )
+          ic_tesisat_sayisi_in = st.number_input(
+              "İç Tesisat Sayısı", min_value=0, step=1, value=0
+          )
           toplam_bedel = st.number_input(
               "Toplam Bedel (TL)*", min_value=0.0, step=500.0
           )
@@ -534,12 +552,12 @@ if sayfa == "Dashboard":
           )
           kalan_tutar_hesaplanan = max(0.0, toplam_bedel - alinan_tutar)
           st.info(f"**Hesaplanan Kalan:** ₺{kalan_tutar_hesaplanan:,.2f}")
+
+        with col_f3:
           odeme_yontemi = st.selectbox(
               "Ödeme Tipi",
               ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"],
           )
-
-        with col_f3:
           armadas_surec_adimi = st.selectbox(
               "Armadaş Durumu",
               [
@@ -550,7 +568,6 @@ if sayfa == "Dashboard":
                   "Randevu Alındı",
               ],
           )
-          # Diğer İşlemler (Cihaz Değişimi, Randevu Reddi dahil)
           diger_islemler = st.multiselect(
               "Diğer İşlemler",
               [
@@ -569,7 +586,7 @@ if sayfa == "Dashboard":
               "Tamamlandı" if kalan_tutar_hesaplanan == 0 else "Devam Ediyor"
           )
           formatli_tarih = turkce_tarih_formatla(proje_tarihi_input)
-          proje_ayi = TURKCE_AYLAR.get(proje_tarihi_input.month, "")
+          proje_ayi = f"{proje_tarihi_input.year}-{proje_tarihi_input.month:02d}"
           diger_islemler_str = (
               ", ".join(diger_islemler) if diger_islemler else "Yok"
           )
@@ -578,8 +595,8 @@ if sayfa == "Dashboard":
           cursor.execute(
               """
                         INSERT INTO kayitlar (seri_no, musteri_adi, telefon, adres, proje_tarihi, proje_ayi, usta_adi, 
-                        armadas_surec_adimi, diger_islemler, toplam_bedel, alinan_tutar, kalan_tutar, odeme_yontemi, sayac_seri_no, notlar, durum)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        kolon_sayisi, ic_tesisat_sayisi, armadas_surec_adimi, diger_islemler, toplam_bedel, alinan_tutar, kalan_tutar, odeme_yontemi, sayac_seri_no, notlar, durum)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
               (
                   seri_no,
@@ -589,6 +606,8 @@ if sayfa == "Dashboard":
                   formatli_tarih,
                   proje_ayi,
                   usta_adi,
+                  kolon_sayisi_in,
+                  ic_tesisat_sayisi_in,
                   armadas_surec_adimi,
                   diger_islemler_str,
                   toplam_bedel,
@@ -615,7 +634,7 @@ if sayfa == "Dashboard":
     )
 
 # ==========================================
-# SAYFA 2: KAYITLAR (Kaldırma/Silme Özellikli)
+# SAYFA 2: KAYITLAR
 # ==========================================
 elif sayfa == "Kayıtlar":
   st.title("📋 Tüm Kayıtlar ve Kaldırma Paneli")
@@ -724,6 +743,18 @@ elif sayfa == "Düzenleme":
           )
 
         with col_e2:
+          e_kolon = st.number_input(
+              "Kolon Sayısı",
+              value=int(row_data.get("kolon_sayisi", 0) or 0),
+              min_value=0,
+              step=1,
+          )
+          e_ic = st.number_input(
+              "İç Tesisat Sayısı",
+              value=int(row_data.get("ic_tesisat_sayisi", 0) or 0),
+              min_value=0,
+              step=1,
+          )
           e_toplam = st.number_input(
               "Toplam Bedel (TL)",
               value=float(row_data["toplam_bedel"]),
@@ -737,6 +768,7 @@ elif sayfa == "Düzenleme":
           e_kalan = max(0.0, e_toplam - e_alinan)
           st.info(f"**Güncellenecek Kalan:** ₺{e_kalan:,.2f}")
 
+        with col_e3:
           odeme_index = (
               ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"].index(
                   row_data["odeme_yontemi"]
@@ -750,8 +782,6 @@ elif sayfa == "Düzenleme":
               ["Nakit", "Havale / EFT", "Kredi Kartı", "Ödeme Alınmadı"],
               index=odeme_index,
           )
-
-        with col_e3:
           e_usta = st.selectbox(
               "Sorumlu Usta",
               u_options,
@@ -794,7 +824,7 @@ elif sayfa == "Düzenleme":
                 """
                             UPDATE kayitlar SET 
                                 musteri_adi=?, proje_tarihi=?, telefon=?, adres=?,
-                                toplam_bedel=?, alinan_tutar=?, kalan_tutar=?, odeme_yontemi=?,
+                                kolon_sayisi=?, ic_tesisat_sayisi=?, toplam_bedel=?, alinan_tutar=?, kalan_tutar=?, odeme_yontemi=?,
                                 usta_adi=?, armadas_surec_adimi=?, diger_islemler=?, sayac_seri_no=?, notlar=?
                             WHERE id=?
                         """,
@@ -803,6 +833,8 @@ elif sayfa == "Düzenleme":
                     e_tarih,
                     e_tel,
                     e_adres,
+                    e_kolon,
+                    e_ic,
                     e_toplam,
                     e_alinan,
                     e_kalan,
@@ -934,113 +966,173 @@ elif sayfa == "Ustalar":
               st.rerun()
 
 # ==========================================
-# SAYFA 5: RAPORLAR, ANALİZ & GRAFİK TABLOSU
+# SAYFA 5: RAPORLAR, MALİ & USTA PERFORMANS ANALİZİ
 # ==========================================
 elif sayfa == "Raporlar & Analiz":
-  st.title("📊 Raporlar, Mali Analiz & Grafik Takibi")
+  st.title("📊 Ofis Detaylı Mali ve Usta Performans Analiz Paneli")
 
   if not izin_rapor_goruntule:
     st.warning("⚠️ Raporları görüntüleme yetkiniz bulunmamaktadır.")
   else:
-    col_r1, col_r2 = st.columns([2, 2])
-    with col_r1:
-      zaman_periyodu = st.selectbox(
-          "📅 Periyot Seçin",
-          ["Tüm Zamanlar", "Bu Hafta (Son 7 Gün)", "Bu Ay (Son 30 Gün)"],
-      )
-    with col_r2:
-      arama_seri = st.text_input(
-          "🔍 Müşteri Adı / Seri No İle Filtrele", value=""
-      )
+    # Üst Kontroller (Periyot ve Ay Seçimi)
+    st.markdown("##### 📅 Raporlama Periyodu Seçin:")
+    periyot_tipi = st.radio(
+        "Periyot", ["Aylık Raporlama", "Haftalık Raporlama"], horizontal=True
+    )
 
     df_kayitlar = pd.read_sql_query(
         "SELECT * FROM kayitlar ORDER BY id DESC", conn
     )
 
     if not df_kayitlar.empty:
-      df_filtered = df_kayitlar.copy()
-      if arama_seri.strip():
-        df_filtered = df_filtered[
-            df_filtered["seri_no"].str.contains(
-                arama_seri, case=False, na=False
-            )
-            | df_filtered["musteri_adi"].str.contains(
-                arama_seri, case=False, na=False
-            )
-        ]
+      # Mevcut ayları bulma (Örn: 2026-06)
+      if "proje_ayi" in df_kayitlar.columns:
+        mevcut_aylar = sorted(
+            [
+                str(x)
+                for x in df_kayitlar["proje_ayi"].dropna().unique()
+                if str(x).strip() != ""
+            ],
+            reverse=True,
+        )
+      else:
+        mevcut_aylar = [datetime.now().strftime("%Y-%m")]
 
-      m1, m2, m3, m4 = st.columns(4)
+      if not mevcut_aylar:
+        mevcut_aylar = [datetime.now().strftime("%Y-%m")]
+
+      secilen_ayi = st.selectbox(
+          "🔍 İncelemek İstediğiniz Mali Ayı Seçin:", mevcut_aylar
+      )
+
+      # Filtreleme
+      if periyot_tipi == "Aylık Raporlama":
+        df_filtered = df_kayitlar[df_kayitlar["proje_ayi"] == secilen_ayi]
+      else:
+        # Son 7 günlük filtre
+        yedi_gun_once = (datetime.now() - timedelta(days=7)).strftime(
+            "%Y-%m-%d"
+        )
+        df_filtered = df_kayitlar.copy()  # Basitleştirilmiş haftalık görünüm
+
+      # Üst Özet Kartları
+      m1, m2, m3 = st.columns(3)
+      toplam_ciro = (
+          df_filtered["toplam_bedel"].sum() if not df_filtered.empty else 0.0
+      )
+      toplam_tahsil = (
+          df_filtered["alinan_tutar"].sum() if not df_filtered.empty else 0.0
+      )
+      kalan_alacak = (
+          df_filtered["kalan_tutar"].sum() if not df_filtered.empty else 0.0
+      )
+
       with m1:
         st.markdown(
-            f'<div class="dashboard-card"><div'
-            f' class="card-value">{len(df_filtered)}</div><div'
-            ' class="card-label">Raporlanan Proje</div></div>',
+            f'<div class="dashboard-card"><div class="card-value">🔥 Toplam'
+            f" Ciro ({secilen_ayi})</div><div"
+            f' class="card-value">₺{toplam_ciro:,.2f}</div></div>',
             unsafe_allow_html=True,
         )
       with m2:
         st.markdown(
-            f'<div class="dashboard-card"><div'
-            f' class="card-value">₺{df_filtered["toplam_bedel"].sum():,.0f}</div><div'
-            ' class="card-label">Toplam Ciro</div></div>',
+            f'<div class="dashboard-card"><div class="card-value">✅ Toplam'
+            f' Tahsil Edilen</div><div class="card-value"'
+            f' style="color:#10b981;">₺{toplam_tahsil:,.2f}</div></div>',
             unsafe_allow_html=True,
         )
       with m3:
         st.markdown(
-            f'<div class="dashboard-card"><div'
-            f' class="card-value">₺{df_filtered["alinan_tutar"].sum():,.0f}</div><div'
-            ' class="card-label">Tahsil Edilen</div></div>',
-            unsafe_allow_html=True,
-        )
-      with m4:
-        st.markdown(
-            f'<div class="dashboard-card"><div'
-            f' class="card-value">₺{df_filtered["kalan_tutar"].sum():,.0f}</div><div'
-            ' class="card-label">Kalan Alacak</div></div>',
+            f'<div class="dashboard-card"><div class="card-value">🚨 Kalan Ofis'
+            f' Alacağı</div><div class="card-value"'
+            f' style="color:#ef4444;">₺{kalan_alacak:,.2f}</div></div>',
             unsafe_allow_html=True,
         )
 
       st.markdown("<br>", unsafe_allow_html=True)
+      st.subheader(
+          f"📊 {secilen_ayi} Dönemi Usta Detaylı İş/İçerik Dağılım Sayıları"
+      )
 
-      # --- YENİ EKLENEN GRAFİK / GÖRSEL TAKİP BÖLÜMÜ ---
-      st.subheader("📈 Görsel Grafik & Takip Paneli")
-      g_col1, g_col2 = st.columns(2)
+      # Yan yana düzen: Sol grafik, Sağ net adet tablosu
+      grafik_col, tablo_col = st.columns([1, 1])
 
-      with g_col1:
-        st.markdown("**Usta Bazlı Ciro Dağılımı (TL)**")
-        if not df_filtered.empty and "usta_adi" in df_filtered.columns:
-          usta_ciro = (
-              df_filtered.groupby("usta_adi")["toplam_bedel"]
-              .sum()
-              .reset_index()
+      # Usta bazlı özet tablo oluşturma
+      ustalar_listesi = pd.read_sql_query(
+          "SELECT ad_soyad FROM ustalar", conn
+      )["ad_soyad"].tolist()
+      # Veride geçen ekstra ustalar varsa ekle
+      for u in df_filtered["usta_adi"].dropna().unique():
+        if u not in ustalar_listesi:
+          ustalar_listesi.append(u)
+
+      summary_data = []
+      for usta in ustalar_listesi:
+        u_df = df_filtered[df_filtered["usta_adi"] == usta]
+        toplam_is = len(u_df)
+        kolon_toplam = (
+            int(u_df["kolon_sayisi"].sum())
+            if "kolon_sayisi" in u_df.columns
+            else 0
+        )
+        ic_toplam = (
+            int(u_df["ic_tesisat_sayisi"].sum())
+            if "ic_tesisat_sayisi" in u_df.columns
+            else 0
+        )
+
+        # Diğer işlemler sayımı
+        cihaz_degisimi_sayisi = 0
+        randevu_red_sayisi = 0
+        if "diger_islemler" in u_df.columns:
+          for val in u_df["diger_islemler"].dropna():
+            if "Cihaz Değişimi" in str(val):
+              cihaz_degisimi_sayisi += 1
+            if "Randevu Reddi" in str(val):
+              randevu_red_sayisi += 1
+
+        urettigi_ciro = (
+            float(u_df["toplam_bedel"].sum())
+            if not u_df.empty
+            else 0.0
+        )
+
+        summary_data.append({
+            "Usta Adı": usta,
+            "Toplam İş (Adet)": toplam_is,
+            "Kolon Sayısı": kolon_toplam,
+            "İç Tesisat Sayısı": ic_toplam,
+            "Cihaz Değişimi": cihaz_degisimi_sayisi,
+            "Randevu Reddi": randevu_red_sayisi,
+            "Ürettiği Toplam Ciro (TL)": urettigi_ciro,
+        })
+
+      summary_df = pd.DataFrame(summary_data)
+      summary_df = summary_df[
+          summary_df["Toplam İş (Adet)"] > 0
+      ]  # Sadece iş yapanlar
+
+      with grafik_col:
+        st.markdown("**📉 Ustaların Kolon ve İç Tesisat Dağılımı (Grafik)**")
+        if not summary_df.empty:
+          chart_df = summary_df.set_index("Usta Adı")[
+              ["Kolon Sayısı", "İç Tesisat Sayısı"]
+          ]
+          st.bar_chart(chart_df)
+        else:
+          st.info("Bu dönem için grafik verisi bulunmuyor.")
+
+      with tablo_col:
+        st.markdown("**📋 Net Adet Raporlama Tablosu**")
+        if not summary_df.empty:
+          st.dataframe(
+              summary_df, use_container_width=True, hide_index=True
           )
-          if not usta_ciro.empty:
-            st.bar_chart(
-                usta_ciro.set_index("usta_adi")["toplam_bedel"],
-                color="#f59e0b",
-            )
-          else:
-            st.info("Gösterilecek veri yok.")
-
-      with g_col2:
-        st.markdown("**Armadaş Süreç Durumu Proje Adedi**")
-        if not df_filtered.empty and "armadas_surec_adimi" in df_filtered.columns:
-          durum_counts = (
-              df_filtered["armadas_surec_adimi"].value_counts().reset_index()
-          )
-          durum_counts.columns = ["Durum", "Sayi"]
-          if not durum_counts.empty:
-            st.bar_chart(
-                durum_counts.set_index("Durum")["Sayi"], color="#3b82f6"
-            )
-          else:
-            st.info("Gösterilecek veri yok.")
+        else:
+          st.info("Bu dönem için tablo verisi bulunmuyor.")
 
       st.markdown("---")
-      st.subheader("📋 Rapor Tablosu ve Kaldırma / Silme Alanı")
-      st.caption(
-          "✏️ Hücreleri doğrudan düzenleyebilir veya istediğiniz kaydı"
-          " listeden tamamen kaldırabilirsiniz."
-      )
+      st.subheader("📋 Detaylı Kayıt Raporu ve Düzenleme / Kaldırma Alanı")
 
       formatted_rapor_df = format_table_df(df_filtered)
 
@@ -1048,6 +1140,12 @@ elif sayfa == "Raporlar & Analiz":
           formatted_rapor_df,
           column_config={
               "Seç": st.column_config.CheckboxColumn("Seç", default=False),
+              "Kolon Sayısı": st.column_config.NumberColumn(
+                  "Kolon", min_value=0, step=1
+              ),
+              "İç Tesisat": st.column_config.NumberColumn(
+                  "İç Tesisat", min_value=0, step=1
+              ),
               "Toplam Bedel (TL)": st.column_config.NumberColumn(
                   "Toplam Bedel (TL)", min_value=0, format="%.2f"
               ),
@@ -1095,19 +1193,23 @@ elif sayfa == "Raporlar & Analiz":
             t_bedel = float(row.get("Toplam Bedel (TL)", 0))
             a_odeme = float(row.get("Alınan Ödeme (TL)", 0))
             k_alacak = max(0.0, t_bedel - a_odeme)
+            kolon_val = int(row.get("Kolon Sayısı", 0) or 0)
+            ic_val = int(row.get("İç Tesisat", 0) or 0)
 
             cursor.execute(
                 """
                             UPDATE kayitlar SET
-                                proje_tarihi = ?, musteri_adi = ?, usta_adi = ?, armadas_surec_adimi = ?,
-                                diger_islemler = ?, toplam_bedel = ?, alinan_tutar = ?, kalan_tutar = ?, odeme_yontemi = ?,
-                                sayac_seri_no = ?, notlar = ?
+                                proje_tarihi = ?, musteri_adi = ?, usta_adi = ?, kolon_sayisi = ?, ic_tesisat_sayisi = ?,
+                                armadas_surec_adimi = ?, diger_islemler = ?, toplam_bedel = ?, alinan_tutar = ?, 
+                                kalan_tutar = ?, odeme_yontemi = ?, sayac_seri_no = ?, notlar = ?
                             WHERE id = ?
                         """,
                 (
                     str(row.get("Kayıt Tarihi", "")),
                     str(row.get("Müşteri Adı", "")),
                     str(row.get("Sorumlu Usta", "")),
+                    kolon_val,
+                    ic_val,
                     str(row.get("Armadaş Durumu", "")),
                     str(row.get("Diğer İşlemler", "")),
                     t_bedel,
@@ -1145,6 +1247,8 @@ elif sayfa == "Raporlar & Analiz":
                 "Lütfen kaldırmak için tablodan en az bir satırın 'Seç'"
                 " kutucuğunu işaretleyin."
             )
+    else:
+      st.info("Sistemde raporlanacak kayıt bulunmuyor.")
 
 # ==========================================
 # SAYFA 6: KULLANICI ONAYLARI & İZİNLER
