@@ -18,20 +18,12 @@ st.set_page_config(
     layout="wide",
 )
 
-USTALAR = [
-    "GÜNEŞ DOĞALGAZ GNS",
-    "MARTES HİLMİ NOKAY",
-    "MEHMET BEKİROĞLU",
-    "MEHMET YİĞİT",
-    "MUHAMMET SÜT",
-    "MUSTAFA GÜL",
-    "SURİYELİ MUHAMMET",
-    "VATAN SİNAN",
-]
+DEFAULT_USTALAR: list[str] = []
 
 COLUMNS = [
     "Tarih", "Ay", "Usta", "Proje", "Müşteri", "Kolon", "Ic_Tesisat",
-    "Durum", "Tutar", "Tahsilat",
+    "Durum", "Tutar", "Tahsilat", "Odeme_Yontemi", "Sayac_Seri_No",
+    "Regulator_Durumu", "Proje_Gelis_Yolu", "Diger_Islemler", "Surec_Adimi", "Notlar",
 ]
 
 ROLE_LABELS = {
@@ -53,6 +45,11 @@ DEFAULT_USERS = {
 def tr_money(value: float) -> str:
     """TL biçiminde okunabilir para değeri döndürür."""
     return f"{float(value):,.2f} ₺"
+
+
+def pdf_money(value: float) -> str:
+    """PDF'nin standart yazı tipinde kare simge oluşmaması için TL kullanır."""
+    return f"{float(value):,.2f} TL"
 
 
 def ascii_text(value: object) -> str:
@@ -179,6 +176,41 @@ def render_tv_dashboard() -> None:
     st.caption("TV ekranını tam ekran kullanmak için tarayıcıda F11 tuşuna basın. Veriler yeni kayıt eklendiğinde yenilenir.")
 
 
+def apply_theme(theme: str) -> None:
+    """Koyu ve açık arayüz için dashboard renklerini tek noktadan uygular."""
+    is_dark = theme == "Koyu"
+    bg = "#080f20" if is_dark else "#f5f7fb"
+    panel = "#0d1629" if is_dark else "#ffffff"
+    panel_soft = "#111d35" if is_dark else "#eef2f7"
+    text = "#f7f9ff" if is_dark else "#14213d"
+    muted = "#90a0bb" if is_dark else "#64748b"
+    border = "#1b2a46" if is_dark else "#dde5ef"
+    input_bg = "#121d32" if is_dark else "#f1f4f8"
+    st.markdown(f"""
+        <style>
+        .stApp {{background: {bg}; color: {text};}}
+        [data-testid="stSidebar"] {{background: {panel}; border-right: 1px solid {border};}}
+        [data-testid="stSidebar"] * {{color: {text};}}
+        .block-container {{padding-top: 1.15rem;}}
+        [data-testid="stMetric"] {{background: {panel}; border: 1px solid {border}; border-radius: 16px; padding: 1rem 1.15rem;}}
+        [data-testid="stMetricLabel"] p, [data-testid="stCaptionContainer"], .stCaption {{color: {muted} !important;}}
+        [data-testid="stMetricValue"] {{color: {text};}}
+        div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, textarea {{background: {input_bg} !important; color: {text} !important; border-color: {border} !important;}}
+        .stTextInput input, .stNumberInput input {{color: {text} !important;}}
+        [data-testid="stDataFrame"] {{border: 1px solid {border}; border-radius: 14px; overflow: hidden;}}
+        [data-testid="stTabs"] [role="tab"] {{color: {muted};}}
+        [data-testid="stTabs"] [aria-selected="true"] {{color: #ffab00;}}
+        .dashboard-title {{font-size: 1.35rem; font-weight: 800; color: {text}; margin: 0;}}
+        .dashboard-subtitle {{color: {muted}; font-size: .83rem; margin-top: .15rem;}}
+        .clock-box {{background: {panel}; border: 1px solid {border}; border-radius: 10px; padding: .5rem .7rem; text-align: center; color: {text}; font-weight: 700;}}
+        </style>
+    """, unsafe_allow_html=True)
+
+
+def master_options() -> list[str]:
+    return st.session_state.ustalar if st.session_state.ustalar else ["Usta atanmamış"]
+
+
 def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
     """Seçili usta ve ay için indirilebilir gerçek PDF üretir."""
     buffer = io.BytesIO()
@@ -201,8 +233,8 @@ def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
     summary = [
         ["Toplam Proje", "Toplam Ciro", "Tahsilat", "Kalan Alacak", "Kolon", "Ic Tesisat"],
         [
-            str(len(records)), tr_money(total_revenue), tr_money(total_collection),
-            tr_money((total_revenue - total_collection)), str(int(records["Kolon"].sum())),
+            str(len(records)), pdf_money(total_revenue), pdf_money(total_collection),
+            pdf_money((total_revenue - total_collection)), str(int(records["Kolon"].sum())),
             str(int(records["Ic_Tesisat"].sum())),
         ],
     ]
@@ -226,7 +258,7 @@ def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
             row["Tarih"].strftime("%d.%m.%Y"),
             f"{ascii_text(row['Proje'])}\n{ascii_text(row['Müşteri'])}",
             ascii_text(row["Durum"]), str(int(row["Kolon"])), str(int(row["Ic_Tesisat"])),
-            tr_money(row["Tutar"]), tr_money(row["Tahsilat"]),
+            pdf_money(row["Tutar"]), pdf_money(row["Tahsilat"]),
         ])
     detail_table = Table(detail, repeatRows=1, colWidths=[2 * cm, 5.2 * cm, 2.4 * cm, 1.3 * cm, 1.8 * cm, 2.8 * cm, 2.8 * cm])
     detail_table.setStyle(TableStyle([
@@ -254,6 +286,10 @@ if "projeler" not in st.session_state:
 
 if "users" not in st.session_state:
     st.session_state.users = DEFAULT_USERS.copy()
+if "ustalar" not in st.session_state:
+    st.session_state.ustalar = DEFAULT_USTALAR.copy()
+if "theme" not in st.session_state:
+    st.session_state.theme = "Koyu"
 if "tv_mode" not in st.session_state:
     st.session_state.tv_mode = False
 
@@ -263,6 +299,7 @@ if "current_user" not in st.session_state:
 
 current_user = st.session_state.current_user
 current_role = current_user["role"]
+apply_theme(st.session_state.theme)
 
 if st.session_state.tv_mode:
     render_tv_dashboard()
@@ -271,6 +308,10 @@ if st.session_state.tv_mode:
 st.sidebar.markdown("### 💼 Ofis Takip Paneli")
 st.sidebar.caption("Güneş Doğalgaz & Mühendislik")
 st.sidebar.markdown("---")
+selected_theme = st.sidebar.selectbox("🎨 Görünüm", ["Koyu", "Aydınlık"], index=0 if st.session_state.theme == "Koyu" else 1)
+if selected_theme != st.session_state.theme:
+    st.session_state.theme = selected_theme
+    st.rerun()
 st.sidebar.success(f"{current_user['name']}\n\nRol: {ROLE_LABELS[current_role]}")
 if st.sidebar.button("📺 TV Modunu Aç", use_container_width=True):
     st.session_state.tv_mode = True
@@ -281,26 +322,48 @@ if st.sidebar.button("↪ Çıkış Yap", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.info("Ciro, tahsilat, kalan alacak ve usta performansını tek ekrandan takip edin.")
 
-st.title("☀️ Güneş Doğalgaz & Mühendislik")
-st.caption(f"Proje, mali durum ve usta performans takip paneli | Giriş: {current_user['name']} ({ROLE_LABELS[current_role]})")
+header_left, header_clock = st.columns([8, 1])
+with header_left:
+    st.markdown('<p class="dashboard-title">☀️ Güneş Doğalgaz | Dashboard</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="dashboard-subtitle">{date.today().strftime("%B %Y")} · {current_user["name"]} ({ROLE_LABELS[current_role]})</p>', unsafe_allow_html=True)
+with header_clock:
+    st.markdown(f'<div class="clock-box">🕒 {datetime.now().strftime("%H:%M")}</div>', unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["🚀 İş / Proje Takibi", "📈 Rapor ve Analiz", "👷 Usta Raporları ve PDF", "🕘 Kayıt Yönetimi"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗂️ Kayıtlar", "📈 Raporlar", "📄 Usta PDF Raporu", "📝 Kayıt Yönetimi", "⚙️ Ayarlar"])
 
 with tab1:
-    st.subheader("Yeni Proje veya İş Kaydı")
+    df_dashboard = get_dataframe()
+    dashboard_month = available_months(df_dashboard)[0]
+    dashboard_current = df_dashboard[df_dashboard["Ay"] == dashboard_month] if not df_dashboard.empty else pd.DataFrame(columns=COLUMNS)
+    dashboard_revenue = dashboard_current["Tutar"].sum() if not dashboard_current.empty else 0
+    dashboard_collection = dashboard_current["Tahsilat"].sum() if not dashboard_current.empty else 0
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Toplam Kayıt", f"{len(df_dashboard)}", help="Sistemdeki tüm proje kayıtları")
+    d2.metric(f"{dashboard_month} Alınan Ödeme", tr_money(dashboard_collection), delta=calculate_change(dashboard_collection, 0))
+    d3.metric("Bekleyen Ödeme", tr_money(dashboard_revenue - dashboard_collection))
+    st.markdown("---")
+    st.subheader("Yeni Proje / Kayıt Ekle")
     with st.form("new_project", clear_on_submit=True):
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
-            proje = st.text_input("Proje / İş adı *")
-            musteri = st.text_input("Müşteri adı soyadı *")
-            usta = st.selectbox("Görevli usta", USTALAR)
-            is_tarihi = st.date_input("İş tarihi", value=date.today())
+            is_tarihi = st.date_input("📅 Proje / kayıt tarihi", value=date.today())
+            musteri = st.text_input("Müşteri adı *")
+            proje = st.text_input("Proje içeriği / iş adı *")
+            gelis_yolu = st.selectbox("Proje geliş yolu", ["WhatsApp", "Telefon", "Referans", "Sosyal Medya", "Diğer"])
+            usta = st.selectbox("Atanan usta", master_options())
         with c2:
-            kolon = st.number_input("Kolon sayısı", min_value=0, step=1, value=1)
-            ic_tesisat = st.number_input("İç tesisat sayısı", min_value=0, step=1, value=0)
+            tutar = st.number_input("💰 Proje toplam bedeli (TL)", min_value=0.0, step=1000.0, value=5000.0)
+            tahsilat = st.number_input("Alınan kapora / ödeme (TL)", min_value=0.0, max_value=float(tutar), step=1000.0, value=0.0)
+            odeme_yontemi = st.selectbox("Ödeme yöntemi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Çek / Senet", "Diğer"])
             durum = st.selectbox("İş durumu", ["Devam Ediyor", "Tamamlandı", "Beklemede"])
-            tutar = st.number_input("Proje bedeli (TL)", min_value=0.0, step=1000.0, value=5000.0)
-            tahsilat = st.number_input("Tahsil edilen tutar (TL)", min_value=0.0, max_value=float(tutar), step=1000.0, value=0.0)
+        with c3:
+            sayac_seri_no = st.text_input("Doğalgaz sayaç seri no")
+            regulator = st.selectbox("Regülatör durumu", ["Gerekmiyor", "Gerekli", "Takıldı", "Beklemede"])
+            kolon = st.number_input("🏢 Kolon sayısı", min_value=0, step=1, value=0)
+            ic_tesisat = st.number_input("🔥 İç tesisat sayısı", min_value=0, step=1, value=0)
+            diger_islemler = st.multiselect("Diğer işlemler", ["Kombi montaj", "Proje çizimi", "Keşif", "Radyatör", "Menfez", "Baca", "Sayaç başvurusu"])
+            surec_adimi = st.selectbox("Armadaş süreç adımı", ["Proje çizim aşamasında", "Onay bekliyor", "Randevu bekliyor", "Gaz açım bekliyor", "Tamamlandı"])
+            notlar = st.text_area("Eksik / red nedeni / notlar")
         submitted = st.form_submit_button("Kaydı Ekle", type="primary")
     if submitted:
         if not proje.strip() or not musteri.strip():
@@ -310,23 +373,29 @@ with tab1:
                 "Tarih": str(is_tarihi), "Ay": is_tarihi.strftime("%Y-%m"), "Usta": usta,
                 "Proje": proje.strip(), "Müşteri": musteri.strip(), "Kolon": kolon,
                 "Ic_Tesisat": ic_tesisat, "Durum": durum, "Tutar": tutar, "Tahsilat": tahsilat,
+                "Odeme_Yontemi": odeme_yontemi, "Sayac_Seri_No": sayac_seri_no,
+                "Regulator_Durumu": regulator, "Proje_Gelis_Yolu": gelis_yolu,
+                "Diger_Islemler": ", ".join(diger_islemler), "Surec_Adimi": surec_adimi,
+                "Notlar": notlar.strip(),
             })
             st.success(f"{proje} projesi kaydedildi.")
 
     st.markdown("---")
-    st.subheader("Tüm Kayıtlar")
+    st.subheader("Son Kayıtlar")
     overview = get_dataframe()
     if overview.empty:
         st.info("Henüz kayıtlı proje yok.")
     else:
         st.dataframe(
-            overview[["Tarih", "Ay", "Usta", "Proje", "Müşteri", "Kolon", "Ic_Tesisat", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak"]],
+            overview[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak", "Odeme_Yontemi", "Sayac_Seri_No", "Regulator_Durumu", "Notlar"]],
             column_config={
                 "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
                 "Ic_Tesisat": "İç Tesisat",
                 "Tutar": st.column_config.NumberColumn("Proje Bedeli", format="%.2f ₺"),
                 "Tahsilat": st.column_config.NumberColumn("Tahsilat", format="%.2f ₺"),
                 "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
+                "Odeme_Yontemi": "Ödeme Tipi", "Sayac_Seri_No": "Sayaç Seri No",
+                "Regulator_Durumu": "Regülatör",
             }, hide_index=True, use_container_width=True,
         )
 
@@ -379,7 +448,7 @@ with tab3:
     months = available_months(df)
     a, b = st.columns(2)
     with a:
-        selected_master = st.selectbox("Usta seçin", USTALAR)
+        selected_master = st.selectbox("Usta seçin", master_options())
     with b:
         master_month = st.selectbox("Rapor ayı", months, key="master_month")
     master_records = df[(df["Usta"] == selected_master) & (df["Ay"] == master_month)].copy() if not df.empty else pd.DataFrame(columns=COLUMNS)
@@ -425,7 +494,8 @@ with tab4:
                     edit_date = st.date_input("İş tarihi", value=pd.to_datetime(record["Tarih"]).date(), key="edit_date")
                     edit_project = st.text_input("Proje / İş adı", value=record["Proje"])
                     edit_customer = st.text_input("Müşteri", value=record["Müşteri"])
-                    edit_master = st.selectbox("Usta", USTALAR, index=USTALAR.index(record["Usta"]) if record["Usta"] in USTALAR else 0)
+                    edit_masters = master_options()
+                    edit_master = st.selectbox("Atanan usta", edit_masters, index=edit_masters.index(record["Usta"]) if record["Usta"] in edit_masters else 0)
                 with e2:
                     statuses = ["Devam Ediyor", "Tamamlandı", "Beklemede"]
                     edit_status = st.selectbox("Durum", statuses, index=statuses.index(record["Durum"]) if record["Durum"] in statuses else 0)
@@ -435,7 +505,9 @@ with tab4:
                     edit_collection = st.number_input("Tahsilat (TL)", min_value=0.0, max_value=float(edit_amount), value=min(float(record.get("Tahsilat", 0)), float(edit_amount)), step=1000.0)
                 save = st.form_submit_button("Değişiklikleri Kaydet", type="primary")
             if save:
-                st.session_state.projeler[selected_index] = {"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection}
+                updated_record = record.copy()
+                updated_record.update({"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection})
+                st.session_state.projeler[selected_index] = updated_record
                 st.success("Kayıt güncellendi.")
                 st.rerun()
             if current_role in {"admin", "yonetici"} and st.button("Seçili kaydı sil", type="secondary"):
@@ -468,3 +540,89 @@ with tab4:
             ])
             st.dataframe(user_rows, hide_index=True, use_container_width=True)
             st.caption("Bu başlangıç sürümünde kullanıcılar oturum belleğinde tutulur. Kalıcı ve güvenli kullanım için kullanıcıları veritabanında saklayıp şifreleri hash'leyin.")
+
+with tab5:
+    st.subheader("Ayarlar ve Yönetim")
+    manager_roles = {"admin", "yonetici", "yonetici_yardimcisi"}
+    if current_role not in manager_roles:
+        st.warning("Bu alan yalnızca yönetim rollerine açıktır.")
+    else:
+        st.markdown("#### 👷 Usta Yönetimi")
+        add_col, list_col = st.columns([1, 1.4])
+        with add_col:
+            with st.form("add_master", clear_on_submit=True):
+                new_master = st.text_input("Yeni usta adı")
+                add_master = st.form_submit_button("Usta Ekle", type="primary")
+            if add_master:
+                master_name = new_master.strip().upper()
+                if not master_name:
+                    st.error("Usta adı girin.")
+                elif master_name in st.session_state.ustalar:
+                    st.error("Bu usta zaten kayıtlı.")
+                else:
+                    st.session_state.ustalar.append(master_name)
+                    st.success(f"{master_name} eklendi.")
+                    st.rerun()
+        with list_col:
+            if not st.session_state.ustalar:
+                st.info("Henüz usta eklenmedi. Soldaki formdan ekleyebilirsiniz.")
+            else:
+                selected_old_master = st.selectbox("Düzenlenecek / kaldırılacak usta", st.session_state.ustalar)
+                rename_col, delete_col = st.columns([2, 1])
+                renamed_master = rename_col.text_input("Yeni ad", value=selected_old_master, key="rename_master")
+                if rename_col.button("Adı Güncelle"):
+                    clean_name = renamed_master.strip().upper()
+                    if not clean_name:
+                        st.error("Usta adı boş olamaz.")
+                    elif clean_name != selected_old_master and clean_name in st.session_state.ustalar:
+                        st.error("Bu isimde başka bir usta zaten var.")
+                    else:
+                        master_index = st.session_state.ustalar.index(selected_old_master)
+                        st.session_state.ustalar[master_index] = clean_name
+                        for project in st.session_state.projeler:
+                            if project.get("Usta") == selected_old_master:
+                                project["Usta"] = clean_name
+                        st.success("Usta adı ve ilgili eski kayıtlar güncellendi.")
+                        st.rerun()
+                if delete_col.button("Ustayı Kaldır", type="secondary"):
+                    st.session_state.ustalar.remove(selected_old_master)
+                    for project in st.session_state.projeler:
+                        if project.get("Usta") == selected_old_master:
+                            project["Usta"] = "Usta atanmamış"
+                    st.warning("Usta kaldırıldı; eski proje kayıtları 'Usta atanmamış' olarak güncellendi.")
+                    st.rerun()
+                st.caption(f"Kayıtlı usta sayısı: {len(st.session_state.ustalar)}")
+
+        if current_role == "admin":
+            st.markdown("---")
+            st.markdown("#### 👤 Kullanıcı Yönetimi")
+            user_keys = list(st.session_state.users.keys())
+            selected_user_key = st.selectbox("Düzenlenecek / kaldırılacak kullanıcı", user_keys, format_func=lambda key: f"{st.session_state.users[key]['name']} ({key})")
+            selected_user = st.session_state.users[selected_user_key]
+            with st.form("edit_user"):
+                uc1, uc2, uc3 = st.columns(3)
+                edited_name = uc1.text_input("Ad soyad", value=selected_user["name"])
+                edited_role = uc2.selectbox("Rol", list(ROLE_LABELS), index=list(ROLE_LABELS).index(selected_user["role"]), format_func=lambda role: ROLE_LABELS[role])
+                edited_password = uc3.text_input("Yeni şifre (değişmeyecekse boş bırakın)", type="password")
+                update_user = st.form_submit_button("Kullanıcıyı Güncelle", type="primary")
+            if update_user:
+                if not edited_name.strip():
+                    st.error("Ad soyad boş olamaz.")
+                elif edited_password and len(edited_password) < 6:
+                    st.error("Yeni şifre en az 6 karakter olmalı.")
+                else:
+                    st.session_state.users[selected_user_key]["name"] = edited_name.strip()
+                    st.session_state.users[selected_user_key]["role"] = edited_role
+                    if edited_password:
+                        st.session_state.users[selected_user_key]["password"] = edited_password
+                    if selected_user_key == current_user["username"]:
+                        st.session_state.current_user = {"username": selected_user_key, **st.session_state.users[selected_user_key]}
+                    st.success("Kullanıcı güncellendi.")
+                    st.rerun()
+            if selected_user_key != current_user["username"]:
+                if st.button("Seçili kullanıcıyı kaldır", type="secondary"):
+                    removed_name = st.session_state.users.pop(selected_user_key)["name"]
+                    st.warning(f"{removed_name} kullanıcısı kaldırıldı.")
+                    st.rerun()
+            else:
+                st.caption("Kendi açık oturumunuzu bu ekrandan kaldıramazsınız.")
