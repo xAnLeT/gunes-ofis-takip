@@ -34,6 +34,21 @@ COLUMNS = [
     "Durum", "Tutar", "Tahsilat",
 ]
 
+ROLE_LABELS = {
+    "admin": "Admin",
+    "yonetici": "Yönetici",
+    "yonetici_yardimcisi": "Yönetici Yardımcısı",
+    "personel": "Personel",
+}
+
+# İlk kurulum için örnek hesaplar. Canlı yayında bunları Streamlit Secrets'e taşıyın.
+DEFAULT_USERS = {
+    "admin": {"password": "admin123", "role": "admin", "name": "Sistem Yöneticisi"},
+    "yonetici": {"password": "yonetici123", "role": "yonetici", "name": "Ofis Yöneticisi"},
+    "yardimci": {"password": "yardimci123", "role": "yonetici_yardimcisi", "name": "Yönetici Yardımcısı"},
+    "personel": {"password": "personel123", "role": "personel", "name": "Ofis Personeli"},
+}
+
 
 def tr_money(value: float) -> str:
     """TL biçiminde okunabilir para değeri döndürür."""
@@ -76,6 +91,92 @@ def calculate_change(current: float, previous: float) -> str:
     if previous == 0:
         return "Yeni dönem" if current > 0 else "%0,0"
     return f"%{((current - previous) / previous) * 100:+.1f}"
+
+
+def can_manage_records(role: str) -> bool:
+    """Kayıt düzenleme/silme yetkisi yalnızca yönetim rollerindedir."""
+    return role in {"admin", "yonetici", "yonetici_yardimcisi"}
+
+
+def render_login() -> None:
+    """Uygulama açılmadan önce gösterilen rol bazlı giriş ekranı."""
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"] {display: none;}
+        .login-card {max-width: 470px; margin: 8vh auto; padding: 2.25rem;
+            border-radius: 20px; background: linear-gradient(145deg,#103c4a,#167d9a);
+            color: white; box-shadow: 0 18px 45px rgba(11,55,68,.28);}
+        .login-card h1 {font-size: 2rem; margin-bottom: .35rem;}
+        .login-card p {opacity: .9;}
+        </style>
+        <div class="login-card"><h1>☀️ Güneş Doğalgaz</h1>
+        <p>Ofis takip sistemine güvenli giriş yapın.</p></div>
+    """, unsafe_allow_html=True)
+    _, middle, _ = st.columns([1, 1.35, 1])
+    with middle:
+        with st.form("login_form"):
+            username = st.text_input("Kullanıcı adı", autocomplete="username")
+            password = st.text_input("Şifre", type="password", autocomplete="current-password")
+            submitted = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
+        if submitted:
+            user = st.session_state.users.get(username.strip().lower())
+            if user and password == user["password"]:
+                st.session_state.current_user = {"username": username.strip().lower(), **user}
+                st.rerun()
+            else:
+                st.error("Kullanıcı adı veya şifre hatalı.")
+        with st.expander("İlk kurulum demo hesapları"):
+            st.caption("Admin: admin / admin123 · Yönetici: yonetici / yonetici123 · Yardımcı: yardimci / yardimci123 · Personel: personel / personel123")
+
+
+def render_tv_dashboard() -> None:
+    """TV'lerde okunabilir büyük göstergeli, yalnızca görüntüleme ekranı."""
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
+        .block-container {padding: 1.5rem 3rem 2rem; max-width: 100%;}
+        [data-testid="stMetricValue"] {font-size: 2.7rem;}
+        [data-testid="stMetricLabel"] {font-size: 1.15rem;}
+        h1 {font-size: 2.5rem !important;}
+        </style>
+    """, unsafe_allow_html=True)
+    top_left, top_right = st.columns([5, 1])
+    with top_left:
+        st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
+        st.caption(f"Son görüntüleme: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+    with top_right:
+        if st.button("TV Modundan Çık", use_container_width=True):
+            st.session_state.tv_mode = False
+            st.rerun()
+    df = get_dataframe()
+    month = available_months(df)[0]
+    current = df[df["Ay"] == month] if not df.empty else pd.DataFrame(columns=COLUMNS)
+    revenue = current["Tutar"].sum() if not current.empty else 0
+    collection = current["Tahsilat"].sum() if not current.empty else 0
+    active = len(current[current["Durum"] == "Devam Ediyor"]) if not current.empty else 0
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric(f"{month} Toplam Ciro", tr_money(revenue))
+    k2.metric("Tahsil Edilen", tr_money(collection))
+    k3.metric("Kalan Ofis Alacağı", tr_money(revenue - collection))
+    k4.metric("Devam Eden İş", f"{active} adet")
+    st.markdown("---")
+    left, right = st.columns([1.25, 1])
+    with left:
+        st.subheader("Usta Performansı")
+        if not current.empty:
+            tv_summary = current.groupby("Usta", as_index=False).agg(Ciro=("Tutar", "sum"), Kolon=("Kolon", "sum"), **{"İç Tesisat": ("Ic_Tesisat", "sum")}).sort_values("Ciro", ascending=False)
+            st.bar_chart(tv_summary.set_index("Usta")[["Ciro"]], color="#2A9D8F")
+            st.dataframe(tv_summary, hide_index=True, use_container_width=True, column_config={"Ciro": st.column_config.NumberColumn(format="%.2f ₺")})
+        else:
+            st.info("Bu ay için proje bulunmuyor.")
+    with right:
+        st.subheader("Açık Projeler")
+        active_projects = current[current["Durum"] != "Tamamlandı"] if not current.empty else pd.DataFrame()
+        if active_projects.empty:
+            st.success("Gösterilecek açık proje yok.")
+        else:
+            st.dataframe(active_projects[["Usta", "Proje", "Müşteri", "Durum", "Tutar"]], hide_index=True, use_container_width=True, column_config={"Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺")})
+    st.caption("TV ekranını tam ekran kullanmak için tarayıcıda F11 tuşuna basın. Veriler yeni kayıt eklendiğinde yenilenir.")
 
 
 def build_master_pdf(usta: str, month: str, records: pd.DataFrame) -> bytes:
@@ -151,14 +252,37 @@ if "projeler" not in st.session_state:
         {"Tarih": "2026-05-15", "Ay": "2026-05", "Usta": "MUSTAFA GÜL", "Proje": "Bireysel Doğalgaz", "Müşteri": "Ali Kaya", "Kolon": 1, "Ic_Tesisat": 1, "Durum": "Tamamlandı", "Tutar": 15000, "Tahsilat": 15000},
     ]
 
+if "users" not in st.session_state:
+    st.session_state.users = DEFAULT_USERS.copy()
+if "tv_mode" not in st.session_state:
+    st.session_state.tv_mode = False
+
+if "current_user" not in st.session_state:
+    render_login()
+    st.stop()
+
+current_user = st.session_state.current_user
+current_role = current_user["role"]
+
+if st.session_state.tv_mode:
+    render_tv_dashboard()
+    st.stop()
 
 st.sidebar.markdown("### 💼 Ofis Takip Paneli")
 st.sidebar.caption("Güneş Doğalgaz & Mühendislik")
 st.sidebar.markdown("---")
+st.sidebar.success(f"{current_user['name']}\n\nRol: {ROLE_LABELS[current_role]}")
+if st.sidebar.button("📺 TV Modunu Aç", use_container_width=True):
+    st.session_state.tv_mode = True
+    st.rerun()
+if st.sidebar.button("↪ Çıkış Yap", use_container_width=True):
+    del st.session_state.current_user
+    st.rerun()
+st.sidebar.markdown("---")
 st.sidebar.info("Ciro, tahsilat, kalan alacak ve usta performansını tek ekrandan takip edin.")
 
 st.title("☀️ Güneş Doğalgaz & Mühendislik")
-st.caption("Proje, mali durum ve usta performans takip paneli")
+st.caption(f"Proje, mali durum ve usta performans takip paneli | Giriş: {current_user['name']} ({ROLE_LABELS[current_role]})")
 
 tab1, tab2, tab3, tab4 = st.tabs(["🚀 İş / Proje Takibi", "📈 Rapor ve Analiz", "👷 Usta Raporları ve PDF", "🕘 Kayıt Yönetimi"])
 
@@ -283,33 +407,64 @@ with tab3:
         st.download_button("📄 Usta raporunu PDF indir", data=pdf, file_name=f"{safe_filename(selected_master)}_{master_month}_raporu.pdf", mime="application/pdf", type="primary")
 
 with tab4:
-    st.subheader("Kayıt Düzenleme ve Silme")
-    st.caption("Kayıt seçin, değerleri düzenleyin veya kaydı silin.")
-    if not st.session_state.projeler:
-        st.info("Düzenlenecek kayıt bulunmuyor.")
+    if not can_manage_records(current_role):
+        st.subheader("Kayıt Yönetimi")
+        st.warning("Kayıt düzenleme ve silme sadece Admin, Yönetici ve Yönetici Yardımcısı rollerine açıktır.")
     else:
-        options = list(range(len(st.session_state.projeler)))
-        selected_index = st.selectbox("Kayıt", options, format_func=lambda i: f"{st.session_state.projeler[i]['Tarih']} | {st.session_state.projeler[i]['Usta']} | {st.session_state.projeler[i]['Proje']}")
-        record = st.session_state.projeler[selected_index]
-        with st.form("edit_project"):
-            e1, e2 = st.columns(2)
-            with e1:
-                edit_date = st.date_input("İş tarihi", value=pd.to_datetime(record["Tarih"]).date(), key="edit_date")
-                edit_project = st.text_input("Proje / İş adı", value=record["Proje"])
-                edit_customer = st.text_input("Müşteri", value=record["Müşteri"])
-                edit_master = st.selectbox("Usta", USTALAR, index=USTALAR.index(record["Usta"]) if record["Usta"] in USTALAR else 0)
-            with e2:
-                edit_status = st.selectbox("Durum", ["Devam Ediyor", "Tamamlandı", "Beklemede"], index=["Devam Ediyor", "Tamamlandı", "Beklemede"].index(record["Durum"]) if record["Durum"] in ["Devam Ediyor", "Tamamlandı", "Beklemede"] else 0)
-                edit_column = st.number_input("Kolon", min_value=0, step=1, value=int(record["Kolon"]))
-                edit_installation = st.number_input("İç tesisat", min_value=0, step=1, value=int(record["Ic_Tesisat"]))
-                edit_amount = st.number_input("Proje bedeli (TL)", min_value=0.0, value=float(record["Tutar"]), step=1000.0)
-                edit_collection = st.number_input("Tahsilat (TL)", min_value=0.0, max_value=float(edit_amount), value=min(float(record.get("Tahsilat", 0)), float(edit_amount)), step=1000.0)
-            save = st.form_submit_button("Değişiklikleri Kaydet", type="primary")
-        if save:
-            st.session_state.projeler[selected_index] = {"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection}
-            st.success("Kayıt güncellendi.")
-            st.rerun()
-        if st.button("Seçili kaydı sil", type="secondary"):
-            removed = st.session_state.projeler.pop(selected_index)
-            st.warning(f"{removed['Proje']} kaydı silindi.")
-            st.rerun()
+        st.subheader("Kayıt Düzenleme ve Silme")
+        st.caption("Kayıt seçin, değerleri düzenleyin veya kaydı silin.")
+        if not st.session_state.projeler:
+            st.info("Düzenlenecek kayıt bulunmuyor.")
+        else:
+            options = list(range(len(st.session_state.projeler)))
+            selected_index = st.selectbox("Kayıt", options, format_func=lambda i: f"{st.session_state.projeler[i]['Tarih']} | {st.session_state.projeler[i]['Usta']} | {st.session_state.projeler[i]['Proje']}")
+            record = st.session_state.projeler[selected_index]
+            with st.form("edit_project"):
+                e1, e2 = st.columns(2)
+                with e1:
+                    edit_date = st.date_input("İş tarihi", value=pd.to_datetime(record["Tarih"]).date(), key="edit_date")
+                    edit_project = st.text_input("Proje / İş adı", value=record["Proje"])
+                    edit_customer = st.text_input("Müşteri", value=record["Müşteri"])
+                    edit_master = st.selectbox("Usta", USTALAR, index=USTALAR.index(record["Usta"]) if record["Usta"] in USTALAR else 0)
+                with e2:
+                    statuses = ["Devam Ediyor", "Tamamlandı", "Beklemede"]
+                    edit_status = st.selectbox("Durum", statuses, index=statuses.index(record["Durum"]) if record["Durum"] in statuses else 0)
+                    edit_column = st.number_input("Kolon", min_value=0, step=1, value=int(record["Kolon"]))
+                    edit_installation = st.number_input("İç tesisat", min_value=0, step=1, value=int(record["Ic_Tesisat"]))
+                    edit_amount = st.number_input("Proje bedeli (TL)", min_value=0.0, value=float(record["Tutar"]), step=1000.0)
+                    edit_collection = st.number_input("Tahsilat (TL)", min_value=0.0, max_value=float(edit_amount), value=min(float(record.get("Tahsilat", 0)), float(edit_amount)), step=1000.0)
+                save = st.form_submit_button("Değişiklikleri Kaydet", type="primary")
+            if save:
+                st.session_state.projeler[selected_index] = {"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Usta": edit_master, "Proje": edit_project, "Müşteri": edit_customer, "Kolon": edit_column, "Ic_Tesisat": edit_installation, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_collection}
+                st.success("Kayıt güncellendi.")
+                st.rerun()
+            if current_role in {"admin", "yonetici"} and st.button("Seçili kaydı sil", type="secondary"):
+                removed = st.session_state.projeler.pop(selected_index)
+                st.warning(f"{removed['Proje']} kaydı silindi.")
+                st.rerun()
+
+        if current_role == "admin":
+            st.markdown("---")
+            st.subheader("Kullanıcı Yönetimi")
+            with st.form("create_user", clear_on_submit=True):
+                u1, u2, u3, u4 = st.columns(4)
+                username = u1.text_input("Kullanıcı adı")
+                name = u2.text_input("Ad soyad")
+                password = u3.text_input("İlk şifre", type="password")
+                role = u4.selectbox("Rol", list(ROLE_LABELS), format_func=lambda r: ROLE_LABELS[r])
+                create_user = st.form_submit_button("Kullanıcı Ekle")
+            if create_user:
+                key = username.strip().lower()
+                if not key or not name.strip() or len(password) < 6:
+                    st.error("Kullanıcı adı, ad soyad ve en az 6 karakterli şifre girin.")
+                elif key in st.session_state.users:
+                    st.error("Bu kullanıcı adı zaten var.")
+                else:
+                    st.session_state.users[key] = {"password": password, "role": role, "name": name.strip()}
+                    st.success(f"{name} kullanıcısı eklendi.")
+            user_rows = pd.DataFrame([
+                {"Kullanıcı Adı": username, "Ad Soyad": data["name"], "Rol": ROLE_LABELS[data["role"]]}
+                for username, data in st.session_state.users.items()
+            ])
+            st.dataframe(user_rows, hide_index=True, use_container_width=True)
+            st.caption("Bu başlangıç sürümünde kullanıcılar oturum belleğinde tutulur. Kalıcı ve güvenli kullanım için kullanıcıları veritabanında saklayıp şifreleri hash'leyin.")
