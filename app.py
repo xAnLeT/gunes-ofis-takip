@@ -1,6 +1,8 @@
 import io
+import json
 import re
 import secrets
+import sqlite3
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
@@ -17,6 +19,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 st.set_page_config(page_title="Güneş Doğalgaz | Ofis Takip", page_icon="☀️", layout="wide")
 
 LOGO_PATH = Path(__file__).with_name("gunes_muhendislik_logo.jpg")
+DATABASE_PATH = Path(__file__).with_name("ofis_takip.sqlite3")
 ROLES = {
     "admin": "Admin",
     "yonetici": "Yönetici",
@@ -74,6 +77,38 @@ def ascii_text(value: object) -> str:
 
 def safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "_", ascii_text(value)).strip("_")
+
+
+def open_database() -> sqlite3.Connection:
+    """Uygulamanın çalıştığı sunucudaki kalıcı kayıt alanını açar."""
+    connection = sqlite3.connect(DATABASE_PATH)
+    connection.execute("CREATE TABLE IF NOT EXISTS application_state (id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL, saved_at TEXT NOT NULL)")
+    return connection
+
+
+def read_saved_state() -> dict | None:
+    with open_database() as connection:
+        row = connection.execute("SELECT payload FROM application_state WHERE id = 1").fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def save_state() -> None:
+    """Proje, usta ve kullanıcı verilerini Streamlit sunucusuna kaydeder."""
+    payload = json.dumps({
+        "projects": st.session_state.projects,
+        "masters": st.session_state.masters,
+        "users": st.session_state.users,
+    }, ensure_ascii=False)
+    with open_database() as connection:
+        connection.execute(
+            "INSERT INTO application_state (id, payload, saved_at) VALUES (1, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, saved_at = excluded.saved_at",
+            (payload, datetime.now().isoformat(timespec="seconds")),
+        )
+
+
+def normalize_masters(items: list) -> list[dict]:
+    return [item.copy() if isinstance(item, dict) else {"name": str(item), "number": "", "phone": ""} for item in items]
 
 
 def get_df() -> pd.DataFrame:
@@ -265,6 +300,7 @@ def render_login() -> None:
                     st.error("Şifreler eşleşmiyor.")
                 else:
                     st.session_state.users[key] = {"name": full_name.strip(), "password": new_password, "role": "personel"}
+                    save_state()
                     st.success("Hesap oluşturuldu. Giriş yapabilirsiniz.")
 
 
@@ -307,27 +343,23 @@ def render_tv() -> None:
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
-if "projects" not in st.session_state:
-    # Eski sürümdeki ``projeler`` oturum verisini korur.
-    st.session_state.projects = list(st.session_state.get("projeler", []))
-if "masters" not in st.session_state:
-    # Eski sürümdeki ``ustalar`` listesini yeni ad/numara/telefon yapısına taşır.
-    legacy_masters = st.session_state.get("ustalar", DEFAULT_MASTERS)
-    st.session_state.masters = [
-        item.copy() if isinstance(item, dict) else {"name": str(item), "number": "", "phone": ""}
-        for item in legacy_masters
-    ]
-if "legacy_data_migrated_v1" not in st.session_state:
-    # Yeni sürüm daha önce açıldıysa dahi, eski oturumda bulunan ustaları bir kez ekler.
-    for old_master in st.session_state.get("ustalar", []):
-        converted = old_master.copy() if isinstance(old_master, dict) else {"name": str(old_master), "number": "", "phone": ""}
-        if converted["name"] and not any(master["name"] == converted["name"] for master in st.session_state.masters):
-            st.session_state.masters.append(converted)
-    if not st.session_state.projects and st.session_state.get("projeler"):
-        st.session_state.projects = list(st.session_state.projeler)
-    st.session_state.legacy_data_migrated_v1 = True
-if "users" not in st.session_state:
-    st.session_state.users = {key: value.copy() for key, value in DEFAULT_USERS.items()}
+if "storage_loaded" not in st.session_state:
+    saved = read_saved_state()
+    if saved:
+        st.session_state.projects = saved.get("projects", [])
+        st.session_state.masters = normalize_masters(saved.get("masters", DEFAULT_MASTERS))
+        st.session_state.users = saved.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+    else:
+        # İlk kayıt anında varsa eski oturum verisini korur, sonra sunucuya kaydeder.
+        current_projects = list(st.session_state.get("projects", []))
+        st.session_state.projects = current_projects or list(st.session_state.get("projeler", []))
+        st.session_state.masters = normalize_masters(st.session_state.get("masters", DEFAULT_MASTERS))
+        for legacy_master in normalize_masters(st.session_state.get("ustalar", [])):
+            if legacy_master["name"] and not any(master["name"] == legacy_master["name"] for master in st.session_state.masters):
+                st.session_state.masters.append(legacy_master)
+        st.session_state.users = st.session_state.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
+        save_state()
+    st.session_state.storage_loaded = True
 if "theme" not in st.session_state:
     st.session_state.theme = "Aydınlık"
 if "tv_mode" not in st.session_state:
@@ -354,12 +386,16 @@ with st.sidebar:
         st.session_state.theme = new_theme
         st.rerun()
     st.success(f"👤 {user['name']}\n\nRol: {ROLES[role]}")
+    if st.button("💾 Verileri Sunucuya Kaydet", use_container_width=True):
+        save_state()
+        st.success("Veriler site kayıt alanına kaydedildi.")
     if st.button("📺 TV Modunu Aç", use_container_width=True):
         st.session_state.tv_mode = True
         st.rerun()
     if st.button("↪ Çıkış Yap", use_container_width=True):
         del st.session_state.current_user
         st.rerun()
+    st.caption("☁️ Otomatik kayıt açık")
 
 head_logo, head_title, head_clock = st.columns([1, 7, 1])
 with head_logo:
@@ -398,7 +434,6 @@ with tab1:
             st.markdown("##### 💰 Finansal Durum")
             amount = st.number_input("Proje toplam bedeli (TL)", min_value=0.0, step=1000.0, value=0.0)
             payment = st.number_input("Alınan kapora / ödeme (TL)", min_value=0.0, max_value=float(amount), step=1000.0, value=0.0)
-            office_debt = st.number_input("Ofis borcu / gideri (TL)", min_value=0.0, step=500.0, value=0.0)
             payment_method = st.selectbox("Ödeme yöntemi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Çek / Senet", "Ödeme Alınmadı", "Diğer"])
             job_status = st.selectbox("İş durumu", ["Devam Ediyor", "Tamamlandı", "Beklemede"])
         with right:
@@ -417,11 +452,12 @@ with tab1:
         else:
             st.session_state.projects.append({
                 "Tarih": str(project_date), "Ay": project_date.strftime("%Y-%m"), "Müşteri": customer.strip(), "Proje": project_name.strip(),
-                "Usta": assigned_master, "Durum": job_status, "Tutar": amount, "Tahsilat": payment, "Ofis_Borcu": office_debt,
+                "Usta": assigned_master, "Durum": job_status, "Tutar": amount, "Tahsilat": payment, "Ofis_Borcu": 0,
                 "Odeme_Yontemi": payment_method, "Sayac_Seri_No": meter_number.strip(), "Regulator_Durumu": regulator,
                 "Proje_Gelis_Yolu": source, "Kolon": columns_count, "Ic_Tesisat": installation_count,
                 "Diger_Islemler": ", ".join(other_works), "Surec_Adimi": armadas_step, "Notlar": notes.strip(),
             })
+            save_state()
             st.success("Proje kaydı eklendi.")
             st.rerun()
     st.markdown("---")
@@ -547,10 +583,12 @@ with tab4:
             save = st.form_submit_button("Değişiklikleri Kaydet", type="primary")
         if save:
             record.update({"Tarih": str(edit_date), "Ay": edit_date.strftime("%Y-%m"), "Müşteri": edit_customer.strip(), "Proje": edit_project.strip(), "Usta": edit_master, "Durum": edit_status, "Tutar": edit_amount, "Tahsilat": edit_payment, "Ofis_Borcu": edit_debt})
+            save_state()
             st.success("Kayıt güncellendi.")
             st.rerun()
         if role in {"admin", "yonetici"} and st.button("🗑️ Seçili kaydı sil", type="secondary"):
             st.session_state.projects.pop(index)
+            save_state()
             st.warning("Kayıt silindi.")
             st.rerun()
 
@@ -589,6 +627,7 @@ with tab5:
                     st.error("Bu usta numarası kullanılıyor.")
                 else:
                     st.session_state.masters.append({"name": name, "number": number, "phone": master_phone.strip()})
+                    save_state()
                     st.success("Usta eklendi.")
                     st.rerun()
         with manage:
@@ -612,6 +651,7 @@ with tab5:
                         for project in st.session_state.projects:
                             if project["Usta"] == old_name:
                                 project["Usta"] = new_name
+                        save_state()
                         st.success("Usta bilgileri güncellendi.")
                         st.rerun()
                 if remove.button("🗑️ Ustayı Kaldır", type="secondary"):
@@ -619,6 +659,7 @@ with tab5:
                     for project in st.session_state.projects:
                         if project["Usta"] == old_name:
                             project["Usta"] = "Usta atanmamış"
+                    save_state()
                     st.warning("Usta kaldırıldı.")
                     st.rerun()
         if role == "admin":
@@ -639,6 +680,7 @@ with tab5:
                     st.error("Bu kullanıcı adı zaten var.")
                 else:
                     st.session_state.users[key] = {"name": add_name.strip(), "password": add_password, "role": add_role}
+                    save_state()
                     st.success("Kullanıcı eklendi.")
             user_key = st.selectbox("Düzenlenecek kullanıcı", list(st.session_state.users), format_func=lambda key: f"{st.session_state.users[key]['name']} ({key})")
             edited = st.session_state.users[user_key]
@@ -657,9 +699,11 @@ with tab5:
                         edited["password"] = changed_password
                     if user_key == user["username"]:
                         st.session_state.current_user = {"username": user_key, **edited}
+                    save_state()
                     st.success("Kullanıcı güncellendi.")
                     st.rerun()
             if user_key != user["username"] and st.button("🗑️ Seçili kullanıcıyı kaldır", type="secondary"):
                 st.session_state.users.pop(user_key)
+                save_state()
                 st.warning("Kullanıcı kaldırıldı.")
                 st.rerun()
