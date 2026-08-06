@@ -308,9 +308,24 @@ def render_tv() -> None:
 
 
 if "projects" not in st.session_state:
-    st.session_state.projects = []
+    # Eski sürümdeki ``projeler`` oturum verisini korur.
+    st.session_state.projects = list(st.session_state.get("projeler", []))
 if "masters" not in st.session_state:
-    st.session_state.masters = [master.copy() for master in DEFAULT_MASTERS]
+    # Eski sürümdeki ``ustalar`` listesini yeni ad/numara/telefon yapısına taşır.
+    legacy_masters = st.session_state.get("ustalar", DEFAULT_MASTERS)
+    st.session_state.masters = [
+        item.copy() if isinstance(item, dict) else {"name": str(item), "number": "", "phone": ""}
+        for item in legacy_masters
+    ]
+if "legacy_data_migrated_v1" not in st.session_state:
+    # Yeni sürüm daha önce açıldıysa dahi, eski oturumda bulunan ustaları bir kez ekler.
+    for old_master in st.session_state.get("ustalar", []):
+        converted = old_master.copy() if isinstance(old_master, dict) else {"name": str(old_master), "number": "", "phone": ""}
+        if converted["name"] and not any(master["name"] == converted["name"] for master in st.session_state.masters):
+            st.session_state.masters.append(converted)
+    if not st.session_state.projects and st.session_state.get("projeler"):
+        st.session_state.projects = list(st.session_state.projeler)
+    st.session_state.legacy_data_migrated_v1 = True
 if "users" not in st.session_state:
     st.session_state.users = {key: value.copy() for key, value in DEFAULT_USERS.items()}
 if "theme" not in st.session_state:
