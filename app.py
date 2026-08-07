@@ -375,29 +375,27 @@ def render_tv() -> None:
             st.session_state.tv_mode = False
             st.rerun()
     df = get_df()
-    month = months(df)[0]
-    current = df[df["Ay"] == month] if not df.empty else df
-    revenue = current["Tutar"].sum() if not current.empty else 0
-    collection = current["Tahsilat"].sum() if not current.empty else 0
-    active = len(current[current["Durum"] == "Devam Ediyor"]) if not current.empty else 0
+    # TV ekranında en güncel ay yerine tüm kayıtlar hesaplanır; tutarlar eksik görünmez.
+    revenue = df["Tutar"].sum() if not df.empty else 0
+    collection = df["Tahsilat"].sum() if not df.empty else 0
+    active = len(df[df["Durum"] == "Devam Ediyor"]) if not df.empty else 0
     a, b, c, d = st.columns(4)
-    a.metric(f"{month} Toplam Ciro", money(revenue))
-    b.metric("Tahsil Edilen", money(collection))
-    c.metric("Kalan Ofis Alacağı", money(revenue - collection))
-    d.metric("Devam Eden İş", f"{active} adet")
-    left, right = st.columns([1.2, 1])
-    with left:
-        st.subheader("📊 Usta Performansı")
-        if not current.empty:
-            summary = current.groupby("Usta", as_index=False).agg(Ciro=("Tutar", "sum")).sort_values("Ciro", ascending=False)
-            st.bar_chart(summary.set_index("Usta"), color="#2a9d8f")
-    with right:
-        st.subheader("🕘 Açık Projeler")
-        open_projects = current[current["Durum"] != "Tamamlandı"] if not current.empty else current
-        if open_projects.empty:
-            st.success("Gösterilecek açık proje yok.")
-        else:
-            st.dataframe(open_projects[["Müşteri", "Usta", "Proje", "Durum", "Tutar"]], hide_index=True, use_container_width=True, column_config={"Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺")})
+    a.metric("💰 Toplam Ciro", money(revenue))
+    b.metric("✅ Toplam Tahsilat", money(collection))
+    c.metric("🏦 Toplam Ofis Alacağı", money(revenue - collection))
+    d.metric("🛠️ Devam Eden İş", f"{active} adet")
+    st.markdown("---")
+    st.subheader("🕘 Son Projeler")
+    if df.empty:
+        st.info("Gösterilecek proje yok.")
+    else:
+        recent = df.sort_values("Tarih", ascending=False).head(6)
+        st.dataframe(recent[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak"]], hide_index=True, use_container_width=True, column_config={
+            "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
+            "Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺"),
+            "Tahsilat": st.column_config.NumberColumn("Tahsilat", format="%.2f ₺"),
+            "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
+        })
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
