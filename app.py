@@ -172,34 +172,6 @@ def fetch_kahramanmaras_weather() -> dict[str, object]:
         return {}
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def fetch_kahramanmaras_fuel_prices() -> dict[str, float]:
-    """Açık akaryakıt verisinden Kahramanmaraş litre fiyatlarını getirir."""
-    try:
-        with urllib.request.urlopen("https://www.hasanadiguzel.com.tr/api/akaryakit/sehir=kahramanmaras", timeout=7) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        stations = payload.get("data", [])
-        row = stations[0] if stations else {}
-        normalized = {ascii_text(key).lower(): value for key, value in row.items()}
-
-        def find_value(*tokens: str) -> float | None:
-            for key, value in normalized.items():
-                if all(token in key for token in tokens):
-                    parsed = _number_or_none(value)
-                    if parsed is not None:
-                        return parsed
-            return None
-
-        values = {
-            "Benzin": find_value("kursunsuz", "95"),
-            "Motorin": find_value("motorin", "eurodiesel"),
-            "LPG": find_value("otogaz"),
-        }
-        return {key: value for key, value in values.items() if value is not None}
-    except Exception:
-        return {}
-
-
 def weather_label(code: object) -> str:
     labels = {
         0: "Açık", 1: "Az bulutlu", 2: "Parçalı bulutlu", 3: "Bulutlu",
@@ -215,6 +187,51 @@ def render_kahramanmaras_map() -> None:
     components.iframe(
         "https://www.google.com/maps?q=37.5858,36.9371&z=10&output=embed",
         height=205,
+        scrolling=False,
+    )
+
+
+def render_completed_projects_carousel(completed: pd.DataFrame) -> None:
+    """Biten projeleri TV ekranında beş saniyede bir değiştiren kompakt alan."""
+    if completed.empty:
+        st.info("Henüz tamamlanan proje yok.")
+        return
+    items = []
+    for _, row in completed.sort_values("Tarih", ascending=False).iterrows():
+        items.append({
+            "customer": str(row.get("Müşteri", "—")),
+            "project": str(row.get("Proje", "—")),
+            "master": str(row.get("Usta", "—")),
+            "amount": f"{float(row.get('Tutar', 0)):,.2f} TL",
+            "date": row["Tarih"].strftime("%d.%m.%Y") if pd.notna(row.get("Tarih")) else "—",
+        })
+    payload = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
+    components.html(
+        f"""
+        <style>
+        body{{margin:0;background:transparent;font-family:Arial,sans-serif;color:#e2e8f0}}
+        #completed-card{{height:86px;border:1px solid #1f3b32;border-left:4px solid #22c55e;border-radius:9px;padding:10px 12px;background:#0f172a;box-sizing:border-box;transition:opacity .35s ease}}
+        .label{{font-size:11px;font-weight:800;color:#4ade80;letter-spacing:.04em}}
+        .project{{font-size:16px;font-weight:800;color:white;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+        .meta{{font-size:12px;color:#cbd5e1;margin-top:5px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;overflow:hidden}}
+        </style>
+        <div id="completed-card"></div>
+        <script>
+          const projects = {payload}; let index = 0; const card = document.getElementById('completed-card');
+          const escapeHtml = (v) => String(v).replace(/[&<>'\"]/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}}[c]));
+          function render() {{
+            const p = projects[index];
+            card.style.opacity = '0';
+            setTimeout(() => {{
+              card.innerHTML = `<div class="label">✅ BİTEN PROJE · ${{index + 1}}/${{projects.length}}</div><div class="project">${{escapeHtml(p.customer)}} — ${{escapeHtml(p.project)}}</div><div class="meta"><span>👷 ${{escapeHtml(p.master)}} · ${{escapeHtml(p.date)}}</span><b>${{escapeHtml(p.amount)}}</b></div>`;
+              card.style.opacity = '1';
+            }}, 180);
+            index = (index + 1) % projects.length;
+          }}
+          render(); if (projects.length > 1) setInterval(render, 5000);
+        </script>
+        """,
+        height=92,
         scrolling=False,
     )
 
@@ -569,17 +586,13 @@ def render_tv() -> None:
     .block-container{max-width:100%;padding:.8rem 1.8rem}
     [data-testid='stMetric']{padding:.55rem .8rem}
     [data-testid='stMetricValue']{font-size:1.75rem}
-    .tv-note{min-height:64px;max-height:64px;overflow:hidden;border:1px solid #24324a;border-radius:8px;padding:.45rem .6rem;color:#cbd5e1;font-size:.78rem;white-space:pre-wrap}
+    .tv-note{min-height:88px;max-height:108px;overflow:auto;border:1px solid #24324a;border-radius:8px;padding:.45rem .6rem;color:#cbd5e1;font-size:.78rem;white-space:pre-wrap}
     .tv-note-title{font-size:.76rem;font-weight:800;color:#f59e0b;margin-bottom:.18rem}
     .market-panel{display:flex;flex-direction:column;gap:.22rem;min-width:208px;max-width:240px}
     .market-quote{display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:.3rem;border:1px solid #24324a;border-radius:7px;padding:.23rem .4rem;background:rgba(15,23,42,.45)}
     .market-name{font-size:.66rem;font-weight:800;color:#cbd5e1;white-space:nowrap}
     .market-value{font-size:.78rem;font-weight:800;color:#f8fafc;white-space:nowrap}
     .market-change{font-size:.58rem;font-weight:700;white-space:nowrap;text-align:right}
-    .fuel-title{font-size:.63rem;font-weight:800;color:#94a3b8;margin:.2rem 0 .1rem}
-    .fuel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.18rem}
-    .fuel-item{border-left:2px solid #f59e0b;padding:.16rem .22rem;background:rgba(15,23,42,.3);font-size:.57rem;color:#cbd5e1;white-space:nowrap}
-    .fuel-price{display:block;color:#f8fafc;font-size:.69rem;font-weight:800;margin-top:.04rem}
     .gas-unit{margin-top:.2rem;border-left:2px solid #38bdf8;padding:.2rem .32rem;background:rgba(15,23,42,.3);font-size:.62rem;color:#cbd5e1;white-space:nowrap}
     .gas-unit strong{color:#f8fafc;font-size:.72rem}
     .weather-card{margin-top:.15rem;border:1px solid #24324a;border-radius:7px;padding:.28rem .42rem;background:rgba(15,23,42,.45);font-size:.65rem;color:#cbd5e1;white-space:nowrap}
@@ -588,7 +601,7 @@ def render_tv() -> None:
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, market, title, clock, map_box = st.columns([.8, 2.2, 3.7, 1.2, 1.55])
+    logo, market, title, clock, map_box = st.columns([.8, 1.8, 4.6, 1.15, 1.1])
     with logo:
         render_logo(95)
     with market:
@@ -608,16 +621,6 @@ def render_tv() -> None:
                 f"<div class='market-change' style='color:{change_colour}'>{change_text}</div></div>"
             )
         st.markdown(f"<div class='market-panel'>{''.join(quotes_html)}</div>", unsafe_allow_html=True)
-        fuel_prices = fetch_kahramanmaras_fuel_prices()
-        fuel_html = []
-        for icon, label in [("⛽", "Benzin"), ("🚛", "Motorin"), ("🔥", "LPG")]:
-            value = fuel_prices.get(label)
-            value_text = f"₺{value:,.2f}" if value is not None else "—"
-            fuel_html.append(f"<div class='fuel-item'>{icon} {label}<span class='fuel-price'>{value_text}/L</span></div>")
-        st.markdown(
-            f"<div class='fuel-title'>KAHRAMANMARAŞ AKARYAKIT</div><div class='fuel-grid'>{''.join(fuel_html)}</div>",
-            unsafe_allow_html=True,
-        )
         st.markdown("<div class='gas-unit'>🔥 <strong>Doğalgaz tüketimi</strong> · takip birimi: m³</div>", unsafe_allow_html=True)
         st.caption("Canlı piyasa · 60 sn")
     with title:
@@ -653,6 +656,19 @@ def render_tv() -> None:
     b.metric("✅ Onaylanan", f"{approved} proje")
     c.metric("🛠️ Devam Eden İş", f"{active} proje")
     d.metric("❌ Reddedilen", f"{rejected} proje")
+    completed_df = df[df["Durum"] == "Tamamlandı"].copy() if not df.empty else df
+    completed_column, master_column = st.columns([1.35, 1])
+    with completed_column:
+        completed_revenue = completed_df["Tutar"].sum() if not completed_df.empty else 0
+        st.markdown(f"##### ✅ Biten Projeler · {len(completed_df)} adet · {money(completed_revenue)}")
+        render_completed_projects_carousel(completed_df)
+    with master_column:
+        st.markdown("##### 👷 Ustaların Yaptığı Proje Sayısı")
+        if df.empty:
+            st.caption("Grafik için proje kaydı bekleniyor.")
+        else:
+            master_counts = df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
+            st.bar_chart(master_counts.set_index("Usta"), height=112, color="#f4a261")
     st.markdown("---")
     note_daily, note_weekly, note_monthly = st.columns(3)
     notes = st.session_state.get("dashboard_notes", {})
@@ -662,26 +678,8 @@ def render_tv() -> None:
         (note_monthly, "📆 AYLIK NOT", "monthly"),
     ]:
         with column:
-            note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")[:220]).replace("\n", "<br>")
+            note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")).replace("\n", "<br>")
             st.markdown(f"<div class='tv-note-title'>{title}</div><div class='tv-note'>{note_text}</div>", unsafe_allow_html=True)
-    st.markdown("---")
-    if df.empty:
-        st.info("Grafik göstermek için proje kaydı ekleyin.")
-    else:
-        chart_df = df.dropna(subset=["Tarih"]).copy()
-        chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
-        weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
-        monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
-        master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
-        left_chart, right_chart = st.columns(2)
-        with left_chart:
-            st.markdown("##### 📅 Haftalık Ciro")
-            st.bar_chart(weekly.set_index("Hafta"), height=120, color="#167d9a")
-        with right_chart:
-            st.markdown("##### 🗓️ Aylık Ciro")
-            st.bar_chart(monthly.set_index("Ay"), height=120, color="#2a9d8f")
-        st.markdown("##### 👷 Ustaların Proje Adetleri")
-        st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
@@ -855,6 +853,24 @@ with tab1:
         st.dataframe(df.sort_values("Tarih", ascending=False)[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak", "Surec_Adimi"]], hide_index=True, use_container_width=True, column_config={
             "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"), "Surec_Adimi": "Armadaş Durumu",
             "Tutar": st.column_config.NumberColumn("Toplam Bedel", format="%.2f ₺"), "Tahsilat": st.column_config.NumberColumn("Alınan Ödeme", format="%.2f ₺"),
+            "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
+        })
+    st.markdown("---")
+    st.subheader("✅ Biten Projeler")
+    completed_projects = df[df["Durum"] == "Tamamlandı"].sort_values("Tarih", ascending=False) if not df.empty else df
+    if completed_projects.empty:
+        st.info("İş durumu “Tamamlandı” olan projeler burada listelenecek.")
+    else:
+        completed_revenue = completed_projects["Tutar"].sum()
+        completed_collection = completed_projects["Tahsilat"].sum()
+        finished_count, finished_revenue, finished_collection = st.columns(3)
+        finished_count.metric("Tamamlanan Proje", f"{len(completed_projects)} adet")
+        finished_revenue.metric("Tamamlanan Proje Cirosu", money(completed_revenue))
+        finished_collection.metric("Tahsil Edilen", money(completed_collection))
+        st.dataframe(completed_projects[["Tarih", "Müşteri", "Proje", "Usta", "Tutar", "Tahsilat", "Kalan_Alacak", "Notlar"]], hide_index=True, use_container_width=True, column_config={
+            "Tarih": st.column_config.DateColumn("Bitiş / Kayıt Tarihi", format="DD.MM.YYYY"),
+            "Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺"),
+            "Tahsilat": st.column_config.NumberColumn("Tahsilat", format="%.2f ₺"),
             "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
         })
 
