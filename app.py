@@ -210,21 +210,11 @@ def weather_label(code: object) -> str:
     return labels.get(_number_or_none(code), "Güncel hava")
 
 
-def render_world_map() -> None:
-    """TV modu için hızlı yüklenen, etkileşimli dünya haritası."""
-    components.html(
-        """
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-        <style>#tv-world-map{height:275px;border-radius:10px;overflow:hidden} body{margin:0;background:transparent}</style>
-        <div id="tv-world-map"></div>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script>
-          const map = L.map('tv-world-map', {zoomControl:true, attributionControl:false, worldCopyJump:true}).setView([27, 20], 2);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18}).addTo(map);
-          L.marker([37.5858, 36.9371]).addTo(map).bindPopup('<b>Kahramanmaraş</b><br>Güneş Doğalgaz').openPopup();
-        </script>
-        """,
-        height=280,
+def render_kahramanmaras_map() -> None:
+    """TV modu için Google Maps üzerinde Kahramanmaraş çevresini gösterir."""
+    components.iframe(
+        "https://www.google.com/maps?q=37.5858,36.9371&z=10&output=embed",
+        height=205,
         scrolling=False,
     )
 
@@ -598,7 +588,7 @@ def render_tv() -> None:
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, market, title, clock, action = st.columns([.85, 2.2, 4.25, 1.35, .9])
+    logo, market, title, clock, map_box = st.columns([.8, 2.2, 3.7, 1.2, 1.55])
     with logo:
         render_logo(95)
     with market:
@@ -647,10 +637,12 @@ def render_tv() -> None:
         else:
             weather_html = "<div class='weather-card'>🌤️ Kahramanmaraş · Hava verisi bekleniyor</div>"
         st.markdown(weather_html, unsafe_allow_html=True)
-    with action:
+    with map_box:
         if st.button("TV Modundan Çık", use_container_width=True):
             st.session_state.tv_mode = False
             st.rerun()
+        st.caption("📍 Kahramanmaraş çevresi")
+        render_kahramanmaras_map()
     df = get_df()
     waiting_approval = len(df[df["Surec_Adimi"] == "Armadaş Dijital Onay Bekliyor"]) if not df.empty else 0
     approved = len(df[(df["Durum"] == "Onaylandı") | (df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında")]) if not df.empty else 0
@@ -673,28 +665,23 @@ def render_tv() -> None:
             note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")[:220]).replace("\n", "<br>")
             st.markdown(f"<div class='tv-note-title'>{title}</div><div class='tv-note'>{note_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
-    charts_column, map_column = st.columns([3, 1])
-    with charts_column:
-        if df.empty:
-            st.info("Grafik göstermek için proje kaydı ekleyin.")
-        else:
-            chart_df = df.dropna(subset=["Tarih"]).copy()
-            chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
-            weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
-            monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
-            master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
-            left_chart, right_chart = st.columns(2)
-            with left_chart:
-                st.markdown("##### 📅 Haftalık Ciro")
-                st.bar_chart(weekly.set_index("Hafta"), height=120, color="#167d9a")
-            with right_chart:
-                st.markdown("##### 🗓️ Aylık Ciro")
-                st.bar_chart(monthly.set_index("Ay"), height=120, color="#2a9d8f")
-            st.markdown("##### 👷 Ustaların Proje Adetleri")
-            st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
-    with map_column:
-        st.markdown("##### 🌍 Dünya Haritası")
-        render_world_map()
+    if df.empty:
+        st.info("Grafik göstermek için proje kaydı ekleyin.")
+    else:
+        chart_df = df.dropna(subset=["Tarih"]).copy()
+        chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
+        weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
+        monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
+        master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
+        left_chart, right_chart = st.columns(2)
+        with left_chart:
+            st.markdown("##### 📅 Haftalık Ciro")
+            st.bar_chart(weekly.set_index("Hafta"), height=120, color="#167d9a")
+        with right_chart:
+            st.markdown("##### 🗓️ Aylık Ciro")
+            st.bar_chart(monthly.set_index("Ay"), height=120, color="#2a9d8f")
+        st.markdown("##### 👷 Ustaların Proje Adetleri")
+        st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
