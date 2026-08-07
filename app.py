@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -204,22 +205,37 @@ def is_manager(role: str) -> bool:
     return role in {"admin", "yonetici", "yonetici_yardimcisi"}
 
 
-def reset_human_check() -> None:
-    st.session_state.human_a = secrets.randbelow(8) + 2
-    st.session_state.human_b = secrets.randbelow(8) + 2
+def reset_captcha(form_name: str) -> None:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    st.session_state[f"{form_name}_captcha_code"] = "".join(secrets.choice(alphabet) for _ in range(5))
+    st.session_state.pop(f"{form_name}_captcha_answer", None)
 
 
-def human_question() -> str:
-    if "human_a" not in st.session_state:
-        reset_human_check()
-    return f"🛡️ İnsan doğrulaması: {st.session_state.human_a} + {st.session_state.human_b} = ?"
+def captcha_image(code: str) -> Image.Image:
+    image = Image.new("RGB", (210, 64), "#eef2f7")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    for index in range(7):
+        x1, y1 = secrets.randbelow(210), secrets.randbelow(64)
+        x2, y2 = secrets.randbelow(210), secrets.randbelow(64)
+        draw.line((x1, y1, x2, y2), fill=(170, 180, 195), width=1)
+    for index, character in enumerate(code):
+        draw.text((22 + index * 34, 22 + secrets.randbelow(10) - 5), character, fill="#15233d", font=font, stroke_width=1)
+    return image
 
 
-def valid_human(answer: str) -> bool:
-    try:
-        return int(answer.strip()) == st.session_state.human_a + st.session_state.human_b
-    except (ValueError, TypeError):
-        return False
+def render_captcha(form_name: str) -> str:
+    code_key = f"{form_name}_captcha_code"
+    if code_key not in st.session_state:
+        reset_captcha(form_name)
+    st.caption("🛡️ Güvenlik doğrulaması: Görseldeki 5 karakteri yazın.")
+    st.image(captcha_image(st.session_state[code_key]), width=210)
+    return st.text_input("Doğrulama kodu", key=f"{form_name}_captcha_answer", autocomplete="off")
+
+
+def valid_captcha(form_name: str, answer: str) -> bool:
+    expected = st.session_state.get(f"{form_name}_captcha_code", "")
+    return bool(answer) and secrets.compare_digest(answer.strip().upper(), expected)
 
 
 def apply_theme(theme: str) -> None:
@@ -312,16 +328,20 @@ def render_login() -> None:
         st.caption("Kurumsal proje yönetim ve iş takip paneli")
         login_tab, register_tab = st.tabs(["🔐 Giriş Yap", "📝 Kayıt Ol"])
         with login_tab:
+            login_error = st.session_state.pop("login_captcha_error", None)
+            if login_error:
+                st.error(login_error)
             with st.form("login_form"):
                 username = st.text_input("Kullanıcı adı", autocomplete="username")
                 password = st.text_input("Şifre", type="password", autocomplete="current-password")
-                human = st.text_input(human_question(), placeholder="Sonucu yazın", key="login_human")
+                captcha_answer = render_captcha("login")
                 submitted = st.form_submit_button("Giriş Yap", type="primary", use_container_width=True)
             if submitted:
                 user = st.session_state.users.get(username.strip().lower())
-                if not valid_human(human):
-                    st.error("İnsan doğrulaması hatalı.")
-                    reset_human_check()
+                if not valid_captcha("login", captcha_answer):
+                    reset_captcha("login")
+                    st.session_state.login_captcha_error = "Doğrulama kodu hatalı. Lütfen yeni görseldeki kodu yazın."
+                    st.rerun()
                 elif user and user["password"] == password:
                     logged_username = username.strip().lower()
                     st.session_state.current_user = {"username": logged_username, **user}
@@ -332,18 +352,22 @@ def render_login() -> None:
                     st.error("Kullanıcı adı veya şifre hatalı.")
         with register_tab:
             st.caption("Yeni hesaplar Personel rolüyle açılır. Admin, rolü Ayarlar alanından güncelleyebilir.")
+            register_error = st.session_state.pop("register_captcha_error", None)
+            if register_error:
+                st.error(register_error)
             with st.form("register_form", clear_on_submit=True):
                 full_name = st.text_input("Ad soyad *")
                 new_username = st.text_input("Kullanıcı adı *")
                 new_password = st.text_input("Şifre *", type="password")
                 password_again = st.text_input("Şifre tekrar *", type="password")
-                register_human = st.text_input(human_question(), placeholder="Sonucu yazın", key="register_human")
+                register_captcha = render_captcha("register")
                 create_account = st.form_submit_button("Hesap Oluştur", type="primary", use_container_width=True)
             if create_account:
                 key = new_username.strip().lower()
-                if not valid_human(register_human):
-                    st.error("İnsan doğrulaması hatalı.")
-                    reset_human_check()
+                if not valid_captcha("register", register_captcha):
+                    reset_captcha("register")
+                    st.session_state.register_captcha_error = "Doğrulama kodu hatalı. Lütfen yeni görseldeki kodu yazın."
+                    st.rerun()
                 elif not full_name.strip() or not key or not new_password:
                     st.error("Ad soyad, kullanıcı adı ve şifre zorunludur.")
                 elif not re.fullmatch(r"[a-z0-9._-]{3,}", key):
