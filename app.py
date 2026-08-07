@@ -140,6 +140,95 @@ def market_change(key: str, value: float | None) -> tuple[str, str]:
     return f"{arrow} {abs(difference):,.4f} TL", colour
 
 
+def _number_or_none(value: object) -> float | None:
+    try:
+        return float(str(value).replace(" ", "").replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_kahramanmaras_weather() -> dict[str, object]:
+    """Kahramanmaraş için güncel koşulları ve günün sıcaklık aralığını getirir."""
+    url = (
+        "https://api.open-meteo.com/v1/forecast?latitude=37.5858&longitude=36.9371"
+        "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
+        "&daily=temperature_2m_max,temperature_2m_min&timezone=Europe%2FIstanbul"
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=6) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        current = payload.get("current", {})
+        daily = payload.get("daily", {})
+        return {
+            "temperature": current.get("temperature_2m"),
+            "apparent": current.get("apparent_temperature"),
+            "weather_code": current.get("weather_code"),
+            "wind": current.get("wind_speed_10m"),
+            "minimum": (daily.get("temperature_2m_min") or [None])[0],
+            "maximum": (daily.get("temperature_2m_max") or [None])[0],
+        }
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_kahramanmaras_fuel_prices() -> dict[str, float]:
+    """Açık akaryakıt verisinden Kahramanmaraş litre fiyatlarını getirir."""
+    try:
+        with urllib.request.urlopen("https://www.hasanadiguzel.com.tr/api/akaryakit/sehir=kahramanmaras", timeout=7) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        stations = payload.get("data", [])
+        row = stations[0] if stations else {}
+        normalized = {ascii_text(key).lower(): value for key, value in row.items()}
+
+        def find_value(*tokens: str) -> float | None:
+            for key, value in normalized.items():
+                if all(token in key for token in tokens):
+                    parsed = _number_or_none(value)
+                    if parsed is not None:
+                        return parsed
+            return None
+
+        values = {
+            "Benzin": find_value("kursunsuz", "95"),
+            "Motorin": find_value("motorin", "eurodiesel"),
+            "LPG": find_value("otogaz"),
+        }
+        return {key: value for key, value in values.items() if value is not None}
+    except Exception:
+        return {}
+
+
+def weather_label(code: object) -> str:
+    labels = {
+        0: "Açık", 1: "Az bulutlu", 2: "Parçalı bulutlu", 3: "Bulutlu",
+        45: "Sisli", 48: "Kırağı sisli", 51: "Çisenti", 53: "Çisenti", 55: "Çisenti",
+        61: "Yağmurlu", 63: "Yağmurlu", 65: "Kuvvetli yağmur", 71: "Karlı", 73: "Karlı",
+        75: "Yoğun kar", 80: "Sağanak", 81: "Sağanak", 82: "Kuvvetli sağanak", 95: "Gök gürültülü",
+    }
+    return labels.get(_number_or_none(code), "Güncel hava")
+
+
+def render_world_map() -> None:
+    """TV modu için hızlı yüklenen, etkileşimli dünya haritası."""
+    components.html(
+        """
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <style>#tv-world-map{height:410px;border-radius:10px;overflow:hidden} body{margin:0;background:transparent}</style>
+        <div id="tv-world-map"></div>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+          const map = L.map('tv-world-map', {zoomControl:true, attributionControl:false, worldCopyJump:true}).setView([27, 20], 2);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18}).addTo(map);
+          L.marker([37.5858, 36.9371]).addTo(map).bindPopup('<b>Kahramanmaraş</b><br>Güneş Doğalgaz').openPopup();
+        </script>
+        """,
+        height=415,
+        scrolling=False,
+    )
+
+
 def pdf_money(value: float) -> str:
     return f"{float(value):,.2f} TL"
 
@@ -497,6 +586,14 @@ def render_tv() -> None:
     .market-name{font-size:.66rem;font-weight:800;color:#cbd5e1;white-space:nowrap}
     .market-value{font-size:.78rem;font-weight:800;color:#f8fafc;white-space:nowrap}
     .market-change{font-size:.58rem;font-weight:700;white-space:nowrap;text-align:right}
+    .fuel-title{font-size:.63rem;font-weight:800;color:#94a3b8;margin:.2rem 0 .1rem}
+    .fuel-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.18rem}
+    .fuel-item{border-left:2px solid #f59e0b;padding:.16rem .22rem;background:rgba(15,23,42,.3);font-size:.57rem;color:#cbd5e1;white-space:nowrap}
+    .fuel-price{display:block;color:#f8fafc;font-size:.69rem;font-weight:800;margin-top:.04rem}
+    .gas-unit{margin-top:.2rem;border-left:2px solid #38bdf8;padding:.2rem .32rem;background:rgba(15,23,42,.3);font-size:.62rem;color:#cbd5e1;white-space:nowrap}
+    .gas-unit strong{color:#f8fafc;font-size:.72rem}
+    .weather-card{margin-top:.15rem;border:1px solid #24324a;border-radius:7px;padding:.28rem .42rem;background:rgba(15,23,42,.45);font-size:.65rem;color:#cbd5e1;white-space:nowrap}
+    .weather-temp{font-size:1rem;font-weight:800;color:#f8fafc;margin-right:.3rem}
     </style>
     """, unsafe_allow_html=True)
     if st_autorefresh:
@@ -521,12 +618,35 @@ def render_tv() -> None:
                 f"<div class='market-change' style='color:{change_colour}'>{change_text}</div></div>"
             )
         st.markdown(f"<div class='market-panel'>{''.join(quotes_html)}</div>", unsafe_allow_html=True)
+        fuel_prices = fetch_kahramanmaras_fuel_prices()
+        fuel_html = []
+        for icon, label in [("⛽", "Benzin"), ("🚛", "Motorin"), ("🔥", "LPG")]:
+            value = fuel_prices.get(label)
+            value_text = f"₺{value:,.2f}" if value is not None else "—"
+            fuel_html.append(f"<div class='fuel-item'>{icon} {label}<span class='fuel-price'>{value_text}/L</span></div>")
+        st.markdown(
+            f"<div class='fuel-title'>KAHRAMANMARAŞ AKARYAKIT</div><div class='fuel-grid'>{''.join(fuel_html)}</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div class='gas-unit'>🔥 <strong>Doğalgaz tüketimi</strong> · takip birimi: m³</div>", unsafe_allow_html=True)
         st.caption("Canlı piyasa · 60 sn")
     with title:
         st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
         st.caption(f"Son güncelleme: {turkey_now().strftime('%d.%m.%Y %H:%M')} (Türkiye)")
     with clock:
         render_animated_turkey_clock()
+        weather = fetch_kahramanmaras_weather()
+        temperature = weather.get("temperature")
+        min_temp, max_temp = weather.get("minimum"), weather.get("maximum")
+        if all(value is not None for value in (temperature, min_temp, max_temp)):
+            weather_html = (
+                f"<div class='weather-card'>🌤️ <b>Kahramanmaraş</b><br>"
+                f"<span class='weather-temp'>{float(temperature):.0f}°</span>{weather_label(weather.get('weather_code'))}"
+                f" · {float(min_temp):.0f}° / {float(max_temp):.0f}°</div>"
+            )
+        else:
+            weather_html = "<div class='weather-card'>🌤️ Kahramanmaraş · Hava verisi bekleniyor</div>"
+        st.markdown(weather_html, unsafe_allow_html=True)
     with action:
         if st.button("TV Modundan Çık", use_container_width=True):
             st.session_state.tv_mode = False
@@ -553,23 +673,28 @@ def render_tv() -> None:
             note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")[:220]).replace("\n", "<br>")
             st.markdown(f"<div class='tv-note-title'>{title}</div><div class='tv-note'>{note_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
-    if df.empty:
-        st.info("Grafik göstermek için proje kaydı ekleyin.")
-    else:
-        chart_df = df.dropna(subset=["Tarih"]).copy()
-        chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
-        weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
-        monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
-        master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
-        left_chart, right_chart = st.columns(2)
-        with left_chart:
-            st.markdown("##### 📅 Haftalık Ciro")
-            st.bar_chart(weekly.set_index("Hafta"), height=145, color="#167d9a")
-        with right_chart:
-            st.markdown("##### 🗓️ Aylık Ciro")
-            st.bar_chart(monthly.set_index("Ay"), height=145, color="#2a9d8f")
-        st.markdown("##### 👷 Ustaların Proje Adetleri")
-        st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
+    charts_column, map_column = st.columns([1.45, 1])
+    with charts_column:
+        if df.empty:
+            st.info("Grafik göstermek için proje kaydı ekleyin.")
+        else:
+            chart_df = df.dropna(subset=["Tarih"]).copy()
+            chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
+            weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
+            monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
+            master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
+            left_chart, right_chart = st.columns(2)
+            with left_chart:
+                st.markdown("##### 📅 Haftalık Ciro")
+                st.bar_chart(weekly.set_index("Hafta"), height=120, color="#167d9a")
+            with right_chart:
+                st.markdown("##### 🗓️ Aylık Ciro")
+                st.bar_chart(monthly.set_index("Ay"), height=120, color="#2a9d8f")
+            st.markdown("##### 👷 Ustaların Proje Adetleri")
+            st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
+    with map_column:
+        st.markdown("##### 🌍 Dünya Haritası")
+        render_world_map()
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
