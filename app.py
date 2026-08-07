@@ -215,7 +215,7 @@ def render_world_map() -> None:
     components.html(
         """
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-        <style>#tv-world-map{height:410px;border-radius:10px;overflow:hidden} body{margin:0;background:transparent}</style>
+        <style>#tv-world-map{height:275px;border-radius:10px;overflow:hidden} body{margin:0;background:transparent}</style>
         <div id="tv-world-map"></div>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
@@ -224,7 +224,7 @@ def render_world_map() -> None:
           L.marker([37.5858, 36.9371]).addTo(map).bindPopup('<b>Kahramanmaraş</b><br>Güneş Doğalgaz').openPopup();
         </script>
         """,
-        height=415,
+        height=280,
         scrolling=False,
     )
 
@@ -673,7 +673,7 @@ def render_tv() -> None:
             note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")[:220]).replace("\n", "<br>")
             st.markdown(f"<div class='tv-note-title'>{title}</div><div class='tv-note'>{note_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
-    charts_column, map_column = st.columns([1.45, 1])
+    charts_column, map_column = st.columns([3, 1])
     with charts_column:
         if df.empty:
             st.info("Grafik göstermek için proje kaydı ekleyin.")
