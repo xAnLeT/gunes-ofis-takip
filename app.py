@@ -74,7 +74,7 @@ OTHER_WORKS = [
 PROJECT_COLUMNS = [
     "Tarih", "Ay", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat",
     "Ofis_Borcu", "Odeme_Yontemi", "Sayac_Seri_No", "Regulator_Durumu",
-    "Proje_Gelis_Yolu", "Kolon", "Ic_Tesisat", "Diger_Islemler", "Surec_Adimi", "Notlar",
+    "Proje_Gelis_Yolu", "Kolon", "Ic_Tesisat", "Diger_Islemler", "Surec_Adimi", "Notlar", "Kayit_Zamani",
 ]
 
 
@@ -182,11 +182,19 @@ def weather_label(code: object) -> str:
     return labels.get(_number_or_none(code), "Güncel hava")
 
 
-def render_kahramanmaras_map() -> None:
-    """TV modu için Google Maps üzerinde Kahramanmaraş çevresini gösterir."""
-    components.iframe(
-        "https://www.google.com/maps?q=37.5858,36.9371&z=10&output=embed",
-        height=150,
+def render_tv_animation() -> None:
+    """TV ekranının sağ üstünde hafif, sürekli çalışan dekoratif animasyon."""
+    components.html(
+        """
+        <style>
+        body{margin:0;background:transparent;overflow:hidden}.scene{height:112px;position:relative;border:1px solid #24324a;border-radius:10px;background:radial-gradient(circle at 65% 35%,#1d4ed8 0,#0f172a 55%);overflow:hidden}
+        .sun{position:absolute;width:30px;height:30px;border-radius:50%;background:#fbbf24;left:calc(50% - 15px);top:calc(50% - 15px);box-shadow:0 0 0 10px rgba(251,191,36,.12),0 0 0 22px rgba(251,191,36,.07);animation:pulse 2.5s infinite}
+        .dot{position:absolute;width:7px;height:7px;border-radius:50%;background:#38bdf8;animation:orbit 5s linear infinite}.dot:nth-child(2){animation-delay:-2.5s;background:#22c55e}
+        @keyframes orbit{from{transform:rotate(0deg) translateX(42px) rotate(0deg)}to{transform:rotate(360deg) translateX(42px) rotate(-360deg)}}@keyframes pulse{50%{transform:scale(1.12);box-shadow:0 0 0 14px rgba(251,191,36,.1),0 0 0 28px rgba(251,191,36,.04)}}
+        .caption{position:absolute;bottom:9px;width:100%;text-align:center;color:#cbd5e1;font:700 10px Arial;letter-spacing:.05em}
+        </style><div class="scene"><div class="sun"><div class="dot"></div><div class="dot"></div></div><div class="caption">CANLI OFİS TAKİP</div></div>
+        """,
+        height=118,
         scrolling=False,
     )
 
@@ -202,7 +210,6 @@ def render_completed_projects_carousel(completed: pd.DataFrame) -> None:
             "customer": str(row.get("Müşteri", "—")),
             "project": str(row.get("Proje", "—")),
             "master": str(row.get("Usta", "—")),
-            "amount": f"{float(row.get('Tutar', 0)):,.2f}",
             "date": row["Tarih"].strftime("%d.%m.%Y") if pd.notna(row.get("Tarih")) else "—",
         })
     payload = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
@@ -213,7 +220,7 @@ def render_completed_projects_carousel(completed: pd.DataFrame) -> None:
         #completed-card{{height:86px;border:1px solid #1f3b32;border-left:4px solid #22c55e;border-radius:9px;padding:10px 12px;background:#0f172a;box-sizing:border-box;transition:opacity .35s ease}}
         .label{{font-size:11px;font-weight:800;color:#4ade80;letter-spacing:.04em}}
         .project{{font-size:16px;font-weight:800;color:white;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
-        .meta{{font-size:12px;color:#cbd5e1;margin-top:5px;display:flex;justify-content:space-between;gap:8px;white-space:nowrap;overflow:hidden}}
+        .meta{{font-size:12px;color:#cbd5e1;margin-top:5px;white-space:nowrap;overflow:hidden}}
         </style>
         <div id="completed-card"></div>
         <script>
@@ -223,7 +230,7 @@ def render_completed_projects_carousel(completed: pd.DataFrame) -> None:
             const p = projects[index];
             card.style.opacity = '0';
             setTimeout(() => {{
-              card.innerHTML = `<div class="label">✅ BİTEN PROJE · ${{index + 1}}/${{projects.length}}</div><div class="project">${{escapeHtml(p.customer)}} — ${{escapeHtml(p.project)}}</div><div class="meta"><span>👷 ${{escapeHtml(p.master)}} · ${{escapeHtml(p.date)}}</span><b>${{escapeHtml(p.amount)}}</b></div>`;
+              card.innerHTML = `<div class="label">✅ BİTEN PROJE · ${{index + 1}}/${{projects.length}}</div><div class="project">${{escapeHtml(p.customer)}} — ${{escapeHtml(p.project)}}</div><div class="meta">👷 ${{escapeHtml(p.master)}} · ${{escapeHtml(p.date)}}</div>`;
               card.style.opacity = '1';
             }}, 180);
             index = (index + 1) % projects.length;
@@ -326,6 +333,7 @@ def get_df() -> pd.DataFrame:
         df["Kalan_Alacak"] = pd.Series(dtype="float")
         return df
     df["Tarih"] = pd.to_datetime(df["Tarih"], errors="coerce")
+    df["Kayit_Zamani"] = pd.to_datetime(df["Kayit_Zamani"], errors="coerce", utc=True)
     df["Ay"] = df["Tarih"].dt.strftime("%Y-%m")
     for column in ["Tutar", "Tahsilat", "Ofis_Borcu", "Kolon", "Ic_Tesisat"]:
         df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
@@ -601,7 +609,7 @@ def render_tv() -> None:
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, market, title, clock, map_box = st.columns([.8, 1.8, 4.45, 1.15, 1.25])
+    logo, market, title, clock, animation_box = st.columns([.8, 1.8, 4.45, 1.15, 1.25])
     with logo:
         render_logo(95)
     with market:
@@ -640,12 +648,11 @@ def render_tv() -> None:
         else:
             weather_html = "<div class='weather-card'>🌤️ Kahramanmaraş · Hava verisi bekleniyor</div>"
         st.markdown(weather_html, unsafe_allow_html=True)
-    with map_box:
+    with animation_box:
         if st.button("TV Modundan Çık", use_container_width=True):
             st.session_state.tv_mode = False
             st.rerun()
-        st.caption("📍 Kahramanmaraş çevresi")
-        render_kahramanmaras_map()
+        render_tv_animation()
     df = get_df()
     waiting_approval = len(df[df["Surec_Adimi"] == "Armadaş Dijital Onay Bekliyor"]) if not df.empty else 0
     approved = len(df[(df["Durum"] == "Onaylandı") | (df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında")]) if not df.empty else 0
@@ -656,10 +663,11 @@ def render_tv() -> None:
     b.metric("✅ Onaylanan", f"{approved} proje")
     c.metric("🛠️ Devam Eden İş", f"{active} proje")
     d.metric("❌ Reddedilen", f"{rejected} proje")
-    completed_df = df[df["Durum"] == "Tamamlandı"].copy() if not df.empty else df
+    cutoff = pd.Timestamp(turkey_now()).tz_convert("UTC") - pd.Timedelta(hours=24)
+    completed_df = df[(df["Durum"] == "Tamamlandı") & (df["Kayit_Zamani"] >= cutoff)].copy() if not df.empty else df
     completed_column, master_column = st.columns([1.35, 1])
     with completed_column:
-        st.markdown(f"##### ✅ Biten Projeler · {len(completed_df)} adet")
+        st.markdown(f"##### ✅ Son 24 Saatte Biten Projeler · {len(completed_df)} adet")
         render_completed_projects_carousel(completed_df)
     with master_column:
         st.markdown("##### 👷 Ustaların Yaptığı Proje Sayısı")
@@ -839,6 +847,7 @@ with tab1:
                 "Odeme_Yontemi": payment_method, "Sayac_Seri_No": meter_number.strip(), "Regulator_Durumu": regulator,
                 "Proje_Gelis_Yolu": source, "Kolon": columns_count, "Ic_Tesisat": installation_count,
                 "Diger_Islemler": ", ".join(other_works), "Surec_Adimi": armadas_step, "Notlar": notes.strip(),
+                "Kayit_Zamani": turkey_now().isoformat(timespec="seconds"),
             })
             save_state()
             st.success("Proje kaydı eklendi.")
