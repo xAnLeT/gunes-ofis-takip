@@ -87,7 +87,7 @@ def turkey_now() -> datetime:
     return datetime.now(TURKEY_TIMEZONE)
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_tcmb_rates() -> dict[str, float]:
     """TCMB günlük XML verisinden USD ve EUR satış kurlarını getirir."""
     try:
@@ -102,6 +102,42 @@ def fetch_tcmb_rates() -> dict[str, float]:
         return rates
     except Exception:
         return {}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_market_quotes() -> dict[str, float]:
+    """Ücretsiz kaynaklardan USD, EUR ve gram altın TL değerlerini getirir."""
+    quotes = fetch_tcmb_rates()
+    try:
+        request = urllib.request.Request(
+            "https://api.gold-api.com/price/XAU",
+            headers={"User-Agent": "GunesOfisTakip/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=6) as response:
+            gold_data = json.loads(response.read().decode("utf-8"))
+        # Kaynak XAU spot fiyatını USD/troy ons olarak verir. 1 troy ons = 31,1034768 gramdır.
+        ounce_usd = float(gold_data.get("price") or gold_data.get("ask") or gold_data.get("bid") or 0)
+        if ounce_usd > 0 and quotes.get("USD"):
+            quotes["GRAM_ALTIN"] = (ounce_usd * quotes["USD"]) / 31.1034768
+    except Exception:
+        pass
+    return quotes
+
+
+def market_change(key: str, value: float | None) -> tuple[str, str]:
+    """Bu tarayıcı oturumunda son yenilemeden itibaren fiyat değişimini gösterir."""
+    if value is None:
+        return "Veri bekleniyor", "#94a3b8"
+    state_key = f"market_previous_{key}"
+    previous = st.session_state.get(state_key)
+    st.session_state[state_key] = value
+    if previous is None:
+        return "İlk değer", "#94a3b8"
+    difference = value - float(previous)
+    if abs(difference) < 0.00001:
+        return "• Değişmedi", "#94a3b8"
+    arrow, colour = ("▲", "#22c55e") if difference > 0 else ("▼", "#ef4444")
+    return f"{arrow} {abs(difference):,.4f} TL", colour
 
 
 def pdf_money(value: float) -> str:
@@ -456,13 +492,36 @@ def render_tv() -> None:
     [data-testid='stMetricValue']{font-size:1.75rem}
     .tv-note{min-height:64px;max-height:64px;overflow:hidden;border:1px solid #24324a;border-radius:8px;padding:.45rem .6rem;color:#cbd5e1;font-size:.78rem;white-space:pre-wrap}
     .tv-note-title{font-size:.76rem;font-weight:800;color:#f59e0b;margin-bottom:.18rem}
+    .market-panel{display:flex;gap:.42rem;align-items:stretch;min-width:285px}
+    .market-quote{flex:1;border:1px solid #24324a;border-radius:9px;padding:.36rem .48rem;background:rgba(15,23,42,.45)}
+    .market-name{font-size:.68rem;font-weight:800;color:#cbd5e1;white-space:nowrap}
+    .market-value{font-size:.9rem;font-weight:800;color:#f8fafc;white-space:nowrap;margin-top:.1rem}
+    .market-change{font-size:.62rem;font-weight:700;white-space:nowrap;margin-top:.08rem}
     </style>
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, title, clock, action = st.columns([1, 4, 1.4, 1])
+    logo, market, title, clock, action = st.columns([1, 3.3, 3, 1.4, 1])
     with logo:
         render_logo(95)
+    with market:
+        rates = fetch_market_quotes()
+        quote_items = [
+            ("USD", "💵 USD/TL", rates.get("USD"), 4),
+            ("EUR", "💶 EUR/TL", rates.get("EUR"), 4),
+            ("GRAM_ALTIN", "🥇 Gram", rates.get("GRAM_ALTIN"), 2),
+        ]
+        quotes_html = []
+        for quote_key, label, value, digits in quote_items:
+            change_text, change_colour = market_change(quote_key, value)
+            value_text = f"₺{value:,.{digits}f}" if value is not None else "—"
+            quotes_html.append(
+                f"<div class='market-quote'><div class='market-name'>{label}</div>"
+                f"<div class='market-value'>{value_text}</div>"
+                f"<div class='market-change' style='color:{change_colour}'>{change_text}</div></div>"
+            )
+        st.markdown(f"<div class='market-panel'>{''.join(quotes_html)}</div>", unsafe_allow_html=True)
+        st.caption("Canlı piyasa · 60 sn")
     with title:
         st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
         st.caption(f"Son güncelleme: {turkey_now().strftime('%d.%m.%Y %H:%M')} (Türkiye)")
@@ -477,15 +536,11 @@ def render_tv() -> None:
     approved = len(df[(df["Durum"] == "Onaylandı") | (df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında")]) if not df.empty else 0
     active = len(df[df["Durum"] == "Devam Ediyor"]) if not df.empty else 0
     rejected = len(df[(df["Durum"] == "Reddedildi") | (df["Surec_Adimi"] == "Armadaş Eksik / Red Aldı") | df["Diger_Islemler"].fillna("").str.contains("Randevu Reddi", na=False)]) if not df.empty else 0
-    rates = fetch_tcmb_rates()
-    a, b, c, d, usd, eur = st.columns(6)
+    a, b, c, d = st.columns(4)
     a.metric("⏳ Onay Bekleyen", f"{waiting_approval} proje")
     b.metric("✅ Onaylanan", f"{approved} proje")
     c.metric("🛠️ Devam Eden İş", f"{active} proje")
     d.metric("❌ Reddedilen", f"{rejected} proje")
-    usd.metric("💵 USD / TL", f"₺{rates['USD']:.4f}" if "USD" in rates else "—")
-    eur.metric("💶 EUR / TL", f"₺{rates['EUR']:.4f}" if "EUR" in rates else "—")
-    st.caption("Kurlar: TCMB günlük döviz satış kuru · 30 dakikada bir güncellenir.")
     st.markdown("---")
     note_daily, note_weekly, note_monthly = st.columns(3)
     notes = st.session_state.get("dashboard_notes", {})
