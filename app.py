@@ -492,16 +492,16 @@ def render_tv() -> None:
     [data-testid='stMetricValue']{font-size:1.75rem}
     .tv-note{min-height:64px;max-height:64px;overflow:hidden;border:1px solid #24324a;border-radius:8px;padding:.45rem .6rem;color:#cbd5e1;font-size:.78rem;white-space:pre-wrap}
     .tv-note-title{font-size:.76rem;font-weight:800;color:#f59e0b;margin-bottom:.18rem}
-    .market-panel{display:flex;gap:.42rem;align-items:stretch;min-width:285px}
-    .market-quote{flex:1;border:1px solid #24324a;border-radius:9px;padding:.36rem .48rem;background:rgba(15,23,42,.45)}
-    .market-name{font-size:.68rem;font-weight:800;color:#cbd5e1;white-space:nowrap}
-    .market-value{font-size:.9rem;font-weight:800;color:#f8fafc;white-space:nowrap;margin-top:.1rem}
-    .market-change{font-size:.62rem;font-weight:700;white-space:nowrap;margin-top:.08rem}
+    .market-panel{display:flex;flex-direction:column;gap:.22rem;min-width:208px;max-width:240px}
+    .market-quote{display:grid;grid-template-columns:75px 1fr auto;align-items:center;gap:.3rem;border:1px solid #24324a;border-radius:7px;padding:.23rem .4rem;background:rgba(15,23,42,.45)}
+    .market-name{font-size:.66rem;font-weight:800;color:#cbd5e1;white-space:nowrap}
+    .market-value{font-size:.78rem;font-weight:800;color:#f8fafc;white-space:nowrap}
+    .market-change{font-size:.58rem;font-weight:700;white-space:nowrap;text-align:right}
     </style>
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, market, title, clock, action = st.columns([1, 3.3, 3, 1.4, 1])
+    logo, market, title, clock, action = st.columns([.85, 2.2, 4.25, 1.35, .9])
     with logo:
         render_logo(95)
     with market:
