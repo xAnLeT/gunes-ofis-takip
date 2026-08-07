@@ -1,5 +1,6 @@
 import io
 import json
+import html
 import re
 import secrets
 import sqlite3
@@ -53,27 +54,8 @@ DEFAULT_USERS = {
     "yardimci": {"name": "Yönetici Yardımcısı", "password": "yardimci123", "role": "yonetici_yardimcisi"},
     "personel": {"name": "Ofis Personeli", "password": "personel123", "role": "personel"},
 }
-DEFAULT_MASTERS = [
-    {"name": "GÜNEŞ DOĞALGAZ GNS", "number": "U-001", "phone": "0507 450 45 33"},
-    {"name": "MARTES HİLMİ NOKAY", "number": "U-002", "phone": "0533 706 30 61"},
-    {"name": "MEHMET BEKİROĞLU", "number": "U-003", "phone": "0507 728 06 41"},
-    {"name": "MEHMET YİĞİT", "number": "U-004", "phone": "0536 583 64 68"},
-    {"name": "MUHAMMET SÜT", "number": "U-005", "phone": ""},
-    {"name": "MUSTAFA GÜL", "number": "U-006", "phone": "0545 409 64 45"},
-    {"name": "SURİYELİ MUHAMMET", "number": "U-007", "phone": "0537 897 02 30"},
-    {"name": "VATAN SİNAN", "number": "U-008", "phone": "0544 211 86 96"},
-    {"name": "ERDAL USTA", "number": "U-009", "phone": "0537 431 91 00"},
-    {"name": "FAHRİ AKPINAR", "number": "U-010", "phone": "0538 896 90 20"},
-    {"name": "HARUN TERLİKSİZ", "number": "U-011", "phone": "0532 404 01 46"},
-    {"name": "MARTEK MEHMET", "number": "U-012", "phone": "0552 458 50 86"},
-    {"name": "MESUT AKGÜN TERMOTEKNİK - GM", "number": "U-013", "phone": "0534 774 16 52"},
-    {"name": "MURAT USTA", "number": "U-014", "phone": "0538 259 69 47"},
-    {"name": "TURABİ USTA", "number": "U-015", "phone": "0545 763 92 02"},
-    {"name": "YAKUP DAL", "number": "U-016", "phone": "0530 467 11 46"},
-    {"name": "CUMA USTA", "number": "U-017", "phone": "0530 240 62 00"},
-    {"name": "ŞAHİN USTA", "number": "U-018", "phone": "0553 054 55 25"},
-    {"name": "ÖMER BEŞENLİOĞLU", "number": "U-019", "phone": "0552 351 91 95"},
-]
+# Usta listesi ve telefonlar uygulama kodunda tutulmaz; site veritabanından yönetilir.
+DEFAULT_MASTERS: list[dict] = []
 ARMADAS_STEPS = [
     # Armadaş ekranındaki resmi sıralama
     "Proje Çizim Aşamasında",
@@ -447,7 +429,16 @@ def render_login() -> None:
 
 
 def render_tv() -> None:
-    st.markdown("<style>[data-testid='stSidebar'],[data-testid='stHeader']{display:none}.block-container{max-width:100%;padding:1.5rem 3rem}[data-testid='stMetricValue']{font-size:2.45rem}</style>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    [data-testid='stSidebar'],[data-testid='stHeader']{display:none}
+    .block-container{max-width:100%;padding:.8rem 1.8rem}
+    [data-testid='stMetric']{padding:.55rem .8rem}
+    [data-testid='stMetricValue']{font-size:1.75rem}
+    .tv-note{min-height:64px;max-height:64px;overflow:hidden;border:1px solid #24324a;border-radius:8px;padding:.45rem .6rem;color:#cbd5e1;font-size:.78rem;white-space:pre-wrap}
+    .tv-note-title{font-size:.76rem;font-weight:800;color:#f59e0b;margin-bottom:.18rem}
+    </style>
+    """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
     logo, title, clock, action = st.columns([1, 4, 1.4, 1])
@@ -463,15 +454,26 @@ def render_tv() -> None:
             st.session_state.tv_mode = False
             st.rerun()
     df = get_df()
-    # TV ekranında en güncel ay yerine tüm kayıtlar hesaplanır; tutarlar eksik görünmez.
-    revenue = df["Tutar"].sum() if not df.empty else 0
-    collection = df["Tahsilat"].sum() if not df.empty else 0
+    waiting_approval = len(df[df["Surec_Adimi"] == "Armadaş Dijital Onay Bekliyor"]) if not df.empty else 0
+    approved = len(df[df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında"]) if not df.empty else 0
     active = len(df[df["Durum"] == "Devam Ediyor"]) if not df.empty else 0
+    rejected = len(df[(df["Surec_Adimi"] == "Armadaş Eksik / Red Aldı") | df["Diger_Islemler"].fillna("").str.contains("Randevu Reddi", na=False)]) if not df.empty else 0
     a, b, c, d = st.columns(4)
-    a.metric("💰 Toplam Ciro", money(revenue))
-    b.metric("✅ Toplam Tahsilat", money(collection))
-    c.metric("🏦 Toplam Ofis Alacağı", money(revenue - collection))
-    d.metric("🛠️ Devam Eden İş", f"{active} adet")
+    a.metric("⏳ Onay Bekleyen", f"{waiting_approval} proje")
+    b.metric("✅ Onaylanan", f"{approved} proje")
+    c.metric("🛠️ Devam Eden İş", f"{active} proje")
+    d.metric("❌ Reddedilen", f"{rejected} proje")
+    st.markdown("---")
+    note_daily, note_weekly, note_monthly = st.columns(3)
+    notes = st.session_state.get("dashboard_notes", {})
+    for column, title, note_key in [
+        (note_daily, "📅 GÜNLÜK NOT", "daily"),
+        (note_weekly, "🗓️ HAFTALIK NOT", "weekly"),
+        (note_monthly, "📆 AYLIK NOT", "monthly"),
+    ]:
+        with column:
+            note_text = html.escape(str(notes.get(note_key, "") or "Not bulunmuyor.")[:220]).replace("\n", "<br>")
+            st.markdown(f"<div class='tv-note-title'>{title}</div><div class='tv-note'>{note_text}</div>", unsafe_allow_html=True)
     st.markdown("---")
     if df.empty:
         st.info("Grafik göstermek için proje kaydı ekleyin.")
@@ -484,12 +486,12 @@ def render_tv() -> None:
         left_chart, right_chart = st.columns(2)
         with left_chart:
             st.markdown("##### 📅 Haftalık Ciro")
-            st.bar_chart(weekly.set_index("Hafta"), height=180, color="#167d9a")
+            st.bar_chart(weekly.set_index("Hafta"), height=145, color="#167d9a")
         with right_chart:
             st.markdown("##### 🗓️ Aylık Ciro")
-            st.bar_chart(monthly.set_index("Ay"), height=180, color="#2a9d8f")
+            st.bar_chart(monthly.set_index("Ay"), height=145, color="#2a9d8f")
         st.markdown("##### 👷 Ustaların Proje Adetleri")
-        st.bar_chart(master_projects.set_index("Usta"), height=180, color="#f4a261")
+        st.bar_chart(master_projects.set_index("Usta"), height=145, color="#f4a261")
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
