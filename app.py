@@ -5,6 +5,8 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -83,6 +85,23 @@ def money(value: float) -> str:
 def turkey_now() -> datetime:
     """Ekrandaki tarih ve saat için sunucudan bağımsız Türkiye saatini döndürür."""
     return datetime.now(TURKEY_TIMEZONE)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_tcmb_rates() -> dict[str, float]:
+    """TCMB günlük XML verisinden USD ve EUR satış kurlarını getirir."""
+    try:
+        with urllib.request.urlopen("https://www.tcmb.gov.tr/kurlar/today.xml", timeout=6) as response:
+            root = ET.fromstring(response.read())
+        rates = {}
+        for code in ("USD", "EUR"):
+            currency = root.find(f".//Currency[@CurrencyCode='{code}']")
+            selling = currency.findtext("ForexSelling") if currency is not None else None
+            if selling:
+                rates[code] = float(selling.replace(",", "."))
+        return rates
+    except Exception:
+        return {}
 
 
 def pdf_money(value: float) -> str:
@@ -455,14 +474,18 @@ def render_tv() -> None:
             st.rerun()
     df = get_df()
     waiting_approval = len(df[df["Surec_Adimi"] == "Armadaş Dijital Onay Bekliyor"]) if not df.empty else 0
-    approved = len(df[df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında"]) if not df.empty else 0
+    approved = len(df[(df["Durum"] == "Onaylandı") | (df["Surec_Adimi"] == "Armadaş Onayladı / Tesisat Aşamasında")]) if not df.empty else 0
     active = len(df[df["Durum"] == "Devam Ediyor"]) if not df.empty else 0
-    rejected = len(df[(df["Surec_Adimi"] == "Armadaş Eksik / Red Aldı") | df["Diger_Islemler"].fillna("").str.contains("Randevu Reddi", na=False)]) if not df.empty else 0
-    a, b, c, d = st.columns(4)
+    rejected = len(df[(df["Durum"] == "Reddedildi") | (df["Surec_Adimi"] == "Armadaş Eksik / Red Aldı") | df["Diger_Islemler"].fillna("").str.contains("Randevu Reddi", na=False)]) if not df.empty else 0
+    rates = fetch_tcmb_rates()
+    a, b, c, d, usd, eur = st.columns(6)
     a.metric("⏳ Onay Bekleyen", f"{waiting_approval} proje")
     b.metric("✅ Onaylanan", f"{approved} proje")
     c.metric("🛠️ Devam Eden İş", f"{active} proje")
     d.metric("❌ Reddedilen", f"{rejected} proje")
+    usd.metric("💵 USD / TL", f"₺{rates['USD']:.4f}" if "USD" in rates else "—")
+    eur.metric("💶 EUR / TL", f"₺{rates['EUR']:.4f}" if "EUR" in rates else "—")
+    st.caption("Kurlar: TCMB günlük döviz satış kuru · 30 dakikada bir güncellenir.")
     st.markdown("---")
     note_daily, note_weekly, note_monthly = st.columns(3)
     notes = st.session_state.get("dashboard_notes", {})
@@ -631,7 +654,7 @@ with tab1:
             amount = st.number_input("Proje toplam bedeli (TL)", min_value=0.0, step=1000.0, value=0.0)
             payment = st.number_input("Alınan kapora / ödeme (TL)", min_value=0.0, max_value=float(amount), step=1000.0, value=0.0)
             payment_method = st.selectbox("Ödeme yöntemi", ["Nakit", "Havale / EFT", "Kredi Kartı", "Çek / Senet", "Ödeme Alınmadı", "Diğer"])
-            job_status = st.selectbox("İş durumu", ["Devam Ediyor", "Tamamlandı", "Beklemede"])
+            job_status = st.selectbox("İş durumu", ["Devam Ediyor", "Onaylandı", "Reddedildi", "Tamamlandı", "Beklemede"])
         with right:
             st.markdown("##### 📦 Malzeme ve Sayaç Detayları")
             meter_number = st.text_input("Doğalgaz sayaç seri no")
@@ -772,7 +795,8 @@ with tab4:
                 options = master_names()
                 edit_master = st.selectbox("Usta", options, index=options.index(record["Usta"]) if record["Usta"] in options else 0)
             with e2:
-                edit_status = st.selectbox("Durum", ["Devam Ediyor", "Tamamlandı", "Beklemede"], index=["Devam Ediyor", "Tamamlandı", "Beklemede"].index(record["Durum"]))
+                status_options = ["Devam Ediyor", "Onaylandı", "Reddedildi", "Tamamlandı", "Beklemede"]
+                edit_status = st.selectbox("Durum", status_options, index=status_options.index(record["Durum"]) if record["Durum"] in status_options else 0)
                 edit_amount = st.number_input("Proje bedeli", min_value=0.0, value=float(record["Tutar"]), step=1000.0)
                 edit_payment = st.number_input("Tahsilat", min_value=0.0, max_value=float(edit_amount), value=min(float(record["Tahsilat"]), float(edit_amount)), step=1000.0)
                 edit_debt = st.number_input("Ofis borcu / gideri", min_value=0.0, value=float(record.get("Ofis_Borcu", 0)), step=500.0)
