@@ -186,7 +186,7 @@ def render_kahramanmaras_map() -> None:
     """TV modu için Google Maps üzerinde Kahramanmaraş çevresini gösterir."""
     components.iframe(
         "https://www.google.com/maps?q=37.5858,36.9371&z=10&output=embed",
-        height=205,
+        height=150,
         scrolling=False,
     )
 
@@ -202,7 +202,7 @@ def render_completed_projects_carousel(completed: pd.DataFrame) -> None:
             "customer": str(row.get("Müşteri", "—")),
             "project": str(row.get("Proje", "—")),
             "master": str(row.get("Usta", "—")),
-            "amount": f"{float(row.get('Tutar', 0)):,.2f} TL",
+            "amount": f"{float(row.get('Tutar', 0)):,.2f}",
             "date": row["Tarih"].strftime("%d.%m.%Y") if pd.notna(row.get("Tarih")) else "—",
         })
     payload = json.dumps(items, ensure_ascii=False).replace("</", "<\\/")
@@ -601,7 +601,7 @@ def render_tv() -> None:
     """, unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, market, title, clock, map_box = st.columns([.8, 1.8, 4.6, 1.15, 1.1])
+    logo, market, title, clock, map_box = st.columns([.8, 1.8, 4.45, 1.15, 1.25])
     with logo:
         render_logo(95)
     with market:
@@ -659,8 +659,7 @@ def render_tv() -> None:
     completed_df = df[df["Durum"] == "Tamamlandı"].copy() if not df.empty else df
     completed_column, master_column = st.columns([1.35, 1])
     with completed_column:
-        completed_revenue = completed_df["Tutar"].sum() if not completed_df.empty else 0
-        st.markdown(f"##### ✅ Biten Projeler · {len(completed_df)} adet · {money(completed_revenue)}")
+        st.markdown(f"##### ✅ Biten Projeler · {len(completed_df)} adet")
         render_completed_projects_carousel(completed_df)
     with master_column:
         st.markdown("##### 👷 Ustaların Yaptığı Proje Sayısı")
@@ -668,7 +667,7 @@ def render_tv() -> None:
             st.caption("Grafik için proje kaydı bekleniyor.")
         else:
             master_counts = df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
-            st.bar_chart(master_counts.set_index("Usta"), height=112, color="#f4a261")
+            st.bar_chart(master_counts.set_index("Usta"), height=128, color="#f4a261")
     st.markdown("---")
     note_daily, note_weekly, note_monthly = st.columns(3)
     notes = st.session_state.get("dashboard_notes", {})
