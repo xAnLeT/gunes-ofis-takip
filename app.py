@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -137,6 +138,7 @@ def save_state() -> None:
         "users": st.session_state.users,
         "global_theme": st.session_state.get("global_theme", "Aydınlık"),
         "global_notes": st.session_state.get("global_notes", ""),
+        "dashboard_notes": st.session_state.get("dashboard_notes", {"daily": "", "weekly": "", "monthly": ""}),
         "master_directory_version": st.session_state.get("master_directory_version", 0),
     }, ensure_ascii=False)
     with open_database() as connection:
@@ -237,6 +239,32 @@ def has_permission(permission: str) -> bool:
 def save_office_notes() -> None:
     st.session_state.global_notes = st.session_state.office_notes
     save_state()
+
+
+def save_dashboard_note(note_type: str) -> None:
+    st.session_state.dashboard_notes[note_type] = st.session_state[f"note_{note_type}"]
+    save_state()
+
+
+def render_animated_turkey_clock() -> None:
+    """TV ekranı için tarayıcıda saniye saniye güncellenen Türkiye saati."""
+    components.html("""
+    <style>
+      body { margin:0; background:transparent; font-family:Arial,sans-serif; }
+      #clock { color:#f59e0b; font-size:28px; font-weight:800; letter-spacing:1px;
+        text-align:right; animation:pulse 1.5s ease-in-out infinite; }
+      #label { color:#94a3b8; font-size:11px; text-align:right; margin-top:2px; }
+      @keyframes pulse { 50% { opacity:.6; transform:scale(.985); } }
+    </style>
+    <div id="clock">--:--:--</div><div id="label">TÜRKİYE SAATİ</div>
+    <script>
+      const updateClock = () => {
+        document.getElementById('clock').textContent = new Intl.DateTimeFormat('tr-TR',
+          {timeZone:'Europe/Istanbul',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
+      };
+      updateClock(); setInterval(updateClock, 1000);
+    </script>
+    """, height=55)
 
 
 def reset_captcha(form_name: str) -> None:
@@ -422,12 +450,14 @@ def render_tv() -> None:
     st.markdown("<style>[data-testid='stSidebar'],[data-testid='stHeader']{display:none}.block-container{max-width:100%;padding:1.5rem 3rem}[data-testid='stMetricValue']{font-size:2.45rem}</style>", unsafe_allow_html=True)
     if st_autorefresh:
         st_autorefresh(interval=60_000, limit=None, key="tv_auto_refresh")
-    logo, title, action = st.columns([1, 5, 1])
+    logo, title, clock, action = st.columns([1, 4, 1.4, 1])
     with logo:
         render_logo(95)
     with title:
         st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
         st.caption(f"Son güncelleme: {turkey_now().strftime('%d.%m.%Y %H:%M')} (Türkiye)")
+    with clock:
+        render_animated_turkey_clock()
     with action:
         if st.button("TV Modundan Çık", use_container_width=True):
             st.session_state.tv_mode = False
@@ -443,17 +473,23 @@ def render_tv() -> None:
     c.metric("🏦 Toplam Ofis Alacağı", money(revenue - collection))
     d.metric("🛠️ Devam Eden İş", f"{active} adet")
     st.markdown("---")
-    st.subheader("🕘 Son Projeler")
     if df.empty:
-        st.info("Gösterilecek proje yok.")
+        st.info("Grafik göstermek için proje kaydı ekleyin.")
     else:
-        recent = df.sort_values("Tarih", ascending=False).head(6)
-        st.dataframe(recent[["Tarih", "Müşteri", "Proje", "Usta", "Durum", "Tutar", "Tahsilat", "Kalan_Alacak"]], hide_index=True, use_container_width=True, column_config={
-            "Tarih": st.column_config.DateColumn("Tarih", format="DD.MM.YYYY"),
-            "Tutar": st.column_config.NumberColumn("Ciro", format="%.2f ₺"),
-            "Tahsilat": st.column_config.NumberColumn("Tahsilat", format="%.2f ₺"),
-            "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
-        })
+        chart_df = df.dropna(subset=["Tarih"]).copy()
+        chart_df["Hafta"] = chart_df["Tarih"].dt.to_period("W-MON").apply(lambda period: period.start_time.strftime("%d.%m"))
+        weekly = chart_df.groupby("Hafta", as_index=False).agg(Ciro=("Tutar", "sum")).tail(8)
+        monthly = chart_df.groupby("Ay", as_index=False).agg(Ciro=("Tutar", "sum")).tail(6)
+        master_projects = chart_df.groupby("Usta", as_index=False).agg(**{"Proje Adedi": ("Proje", "count")}).sort_values("Proje Adedi", ascending=False)
+        left_chart, right_chart = st.columns(2)
+        with left_chart:
+            st.markdown("##### 📅 Haftalık Ciro")
+            st.bar_chart(weekly.set_index("Hafta"), height=180, color="#167d9a")
+        with right_chart:
+            st.markdown("##### 🗓️ Aylık Ciro")
+            st.bar_chart(monthly.set_index("Ay"), height=180, color="#2a9d8f")
+        st.markdown("##### 👷 Ustaların Proje Adetleri")
+        st.bar_chart(master_projects.set_index("Usta"), height=180, color="#f4a261")
     st.caption("Tam ekran kullanım için tarayıcıda F11 tuşuna basın.")
 
 
@@ -465,6 +501,7 @@ if "storage_loaded" not in st.session_state:
         st.session_state.users = saved.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
         st.session_state.global_theme = saved.get("global_theme", "Aydınlık")
         st.session_state.global_notes = saved.get("global_notes", "")
+        st.session_state.dashboard_notes = saved.get("dashboard_notes", {"daily": saved.get("global_notes", ""), "weekly": "", "monthly": ""})
         st.session_state.master_directory_version = saved.get("master_directory_version", 0)
     else:
         # İlk kayıt anında varsa eski oturum verisini korur, sonra sunucuya kaydeder.
@@ -477,6 +514,7 @@ if "storage_loaded" not in st.session_state:
         st.session_state.users = st.session_state.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
         st.session_state.global_theme = st.session_state.get("global_theme", "Aydınlık")
         st.session_state.global_notes = st.session_state.get("global_notes", "")
+        st.session_state.dashboard_notes = st.session_state.get("dashboard_notes", {"daily": st.session_state.global_notes, "weekly": "", "monthly": ""})
         st.session_state.master_directory_version = 0
         save_state()
     st.session_state.storage_loaded = True
@@ -535,14 +573,6 @@ with st.sidebar:
         del st.session_state.current_user
         st.rerun()
     st.caption("☁️ Otomatik kayıt açık")
-    with st.expander("🗒️ Ortak Ofis Notları", expanded=False):
-        st.text_area(
-            "Notlar otomatik kaydedilir; silmek için metni klavyeden temizleyin.",
-            value=st.session_state.global_notes,
-            key="office_notes",
-            height=180,
-            on_change=save_office_notes,
-        )
 
 if st_autorefresh:
     st_autorefresh(interval=60_000, limit=None, key="office_auto_refresh")
@@ -569,6 +599,20 @@ with tab1:
     k2.metric("👷 Kayıtlı Usta", len(st.session_state.masters))
     k3.metric("📉 Toplam Borç", money(debt))
     k4.metric("🏦 Toplam Ofis Alacağı", money(receivable))
+    st.markdown("---")
+    st.subheader("🗒️ Ofis Notları")
+    st.caption("Notlar otomatik kaydedilir. Silmek isterseniz metni klavyeden temizlemeniz yeterlidir.")
+    for note_type in ["daily", "weekly", "monthly"]:
+        state_key = f"note_{note_type}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = st.session_state.dashboard_notes.get(note_type, "")
+    daily_note, weekly_note, monthly_note = st.columns(3)
+    with daily_note:
+        st.text_area("📅 Günlük Notlar", key="note_daily", height=155, on_change=lambda: save_dashboard_note("daily"))
+    with weekly_note:
+        st.text_area("🗓️ Haftalık Notlar", key="note_weekly", height=155, on_change=lambda: save_dashboard_note("weekly"))
+    with monthly_note:
+        st.text_area("📆 Aylık Notlar", key="note_monthly", height=155, on_change=lambda: save_dashboard_note("monthly"))
     st.markdown("---")
     st.subheader("📝 Yeni Proje / İş Kaydı")
     with st.form("new_project", clear_on_submit=True):
