@@ -6,6 +6,7 @@ import sqlite3
 import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -26,11 +27,24 @@ st.set_page_config(page_title="Güneş Doğalgaz | Ofis Takip", page_icon="☀�
 
 LOGO_PATH = Path(__file__).with_name("gunes_muhendislik_logo.jpg")
 DATABASE_PATH = Path(__file__).with_name("ofis_takip.sqlite3")
+TURKEY_TIMEZONE = ZoneInfo("Europe/Istanbul")
 ROLES = {
     "admin": "Admin",
     "yonetici": "Yönetici",
     "yonetici_yardimcisi": "Yönetici Yardımcısı",
     "personel": "Personel",
+}
+PERMISSION_LABELS = {
+    "project_edit": "Proje kayıtlarını düzenleme",
+    "project_delete": "Proje kayıtlarını silme",
+    "masters_manage": "Usta rehberini yönetme",
+    "users_manage": "Kullanıcı ve izin yönetimi",
+}
+ROLE_PERMISSIONS = {
+    "admin": set(PERMISSION_LABELS),
+    "yonetici": {"project_edit", "project_delete", "masters_manage"},
+    "yonetici_yardimcisi": {"project_edit", "masters_manage"},
+    "personel": set(),
 }
 DEFAULT_USERS = {
     "admin": {"name": "Sistem Yöneticisi", "password": "admin123", "role": "admin"},
@@ -83,6 +97,11 @@ def money(value: float) -> str:
     return f"{float(value):,.2f} ₺"
 
 
+def turkey_now() -> datetime:
+    """Ekrandaki tarih ve saat için sunucudan bağımsız Türkiye saatini döndürür."""
+    return datetime.now(TURKEY_TIMEZONE)
+
+
 def pdf_money(value: float) -> str:
     return f"{float(value):,.2f} TL"
 
@@ -116,7 +135,8 @@ def save_state() -> None:
         "projects": st.session_state.projects,
         "masters": st.session_state.masters,
         "users": st.session_state.users,
-        "user_themes": st.session_state.get("user_themes", {}),
+        "global_theme": st.session_state.get("global_theme", "Aydınlık"),
+        "global_notes": st.session_state.get("global_notes", ""),
         "master_directory_version": st.session_state.get("master_directory_version", 0),
     }, ensure_ascii=False)
     with open_database() as connection:
@@ -203,6 +223,20 @@ def find_master(name: str) -> dict | None:
 
 def is_manager(role: str) -> bool:
     return role in {"admin", "yonetici", "yonetici_yardimcisi"}
+
+
+def has_permission(permission: str) -> bool:
+    active_user = st.session_state.get("current_user", {})
+    if active_user.get("role") == "admin":
+        return True
+    custom_permissions = active_user.get("permissions")
+    allowed = set(custom_permissions) if custom_permissions is not None else ROLE_PERMISSIONS.get(active_user.get("role"), set())
+    return permission in allowed
+
+
+def save_office_notes() -> None:
+    st.session_state.global_notes = st.session_state.office_notes
+    save_state()
 
 
 def reset_captcha(form_name: str) -> None:
@@ -393,7 +427,7 @@ def render_tv() -> None:
         render_logo(95)
     with title:
         st.title("☀️ Güneş Doğalgaz | Canlı Ofis Ekranı")
-        st.caption(f"Son güncelleme: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        st.caption(f"Son güncelleme: {turkey_now().strftime('%d.%m.%Y %H:%M')} (Türkiye)")
     with action:
         if st.button("TV Modundan Çık", use_container_width=True):
             st.session_state.tv_mode = False
@@ -429,7 +463,8 @@ if "storage_loaded" not in st.session_state:
         st.session_state.projects = saved.get("projects", [])
         st.session_state.masters = normalize_masters(saved.get("masters", DEFAULT_MASTERS))
         st.session_state.users = saved.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
-        st.session_state.user_themes = saved.get("user_themes", {})
+        st.session_state.global_theme = saved.get("global_theme", "Aydınlık")
+        st.session_state.global_notes = saved.get("global_notes", "")
         st.session_state.master_directory_version = saved.get("master_directory_version", 0)
     else:
         # İlk kayıt anında varsa eski oturum verisini korur, sonra sunucuya kaydeder.
@@ -440,7 +475,8 @@ if "storage_loaded" not in st.session_state:
             if legacy_master["name"] and not any(master["name"] == legacy_master["name"] for master in st.session_state.masters):
                 st.session_state.masters.append(legacy_master)
         st.session_state.users = st.session_state.get("users", {key: value.copy() for key, value in DEFAULT_USERS.items()})
-        st.session_state.user_themes = st.session_state.get("user_themes", {})
+        st.session_state.global_theme = st.session_state.get("global_theme", "Aydınlık")
+        st.session_state.global_notes = st.session_state.get("global_notes", "")
         st.session_state.master_directory_version = 0
         save_state()
     st.session_state.storage_loaded = True
@@ -456,7 +492,7 @@ if st.session_state.get("master_directory_version", 0) < 2:
     st.session_state.master_directory_version = 2
     save_state()
 if "theme" not in st.session_state:
-    st.session_state.theme = "Aydınlık"
+    st.session_state.theme = st.session_state.get("global_theme", "Aydınlık")
 if "tv_mode" not in st.session_state:
     st.session_state.tv_mode = False
 
@@ -470,9 +506,7 @@ if "current_user" not in st.session_state:
 
 user = st.session_state.current_user
 role = user["role"]
-if st.session_state.get("theme_owner") != user["username"]:
-    st.session_state.theme = st.session_state.user_themes.get(user["username"], "Aydınlık")
-    st.session_state.theme_owner = user["username"]
+st.session_state.theme = st.session_state.global_theme
 apply_theme(st.session_state.theme)
 if st.session_state.tv_mode:
     render_tv()
@@ -486,10 +520,10 @@ with st.sidebar:
     new_theme = st.selectbox("🎨 Görünüm", ["Aydınlık", "Koyu"], index=0 if st.session_state.theme == "Aydınlık" else 1)
     if new_theme != st.session_state.theme:
         st.session_state.theme = new_theme
-        st.session_state.user_themes[user["username"]] = new_theme
+        st.session_state.global_theme = new_theme
         save_state()
         st.rerun()
-    st.success(f"👤 {user['name']}\n\nRol: {ROLES[role]}")
+    st.success(f"👤 {user['name']}\n\n{ROLES[role]}")
     if st.button("💾 Verileri Sunucuya Kaydet", use_container_width=True):
         save_state()
         st.success("Veriler site kayıt alanına kaydedildi.")
@@ -501,6 +535,14 @@ with st.sidebar:
         del st.session_state.current_user
         st.rerun()
     st.caption("☁️ Otomatik kayıt açık")
+    with st.expander("🗒️ Ortak Ofis Notları", expanded=False):
+        st.text_area(
+            "Notlar otomatik kaydedilir; silmek için metni klavyeden temizleyin.",
+            value=st.session_state.global_notes,
+            key="office_notes",
+            height=180,
+            on_change=save_office_notes,
+        )
 
 if st_autorefresh:
     st_autorefresh(interval=60_000, limit=None, key="office_auto_refresh")
@@ -512,7 +554,7 @@ with head_title:
     st.markdown("<p class='brand-title'>☀️ Güneş Doğalgaz | Dashboard</p>", unsafe_allow_html=True)
     st.markdown(f"<p class='brand-subtitle'>{date.today().strftime('%d.%m.%Y')} · {user['name']} ({ROLES[role]})</p>", unsafe_allow_html=True)
 with head_clock:
-    st.markdown(f"<div class='clock'>🕒 {datetime.now().strftime('%H:%M')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='clock'>🕒 {turkey_now().strftime('%H:%M')}</div>", unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "➕ Yeni Proje & İş Kaydı", "🔥 Finans & Performans", "👷 Usta Rehberi & PDF", "📋 Merkezi İş Takip", "⚙️ Ayarlar",
@@ -667,8 +709,8 @@ with tab4:
             "Tahsilat": st.column_config.NumberColumn("Alınan Ödeme", format="%.2f ₺"), "Kalan_Alacak": st.column_config.NumberColumn("Kalan Alacak", format="%.2f ₺"),
         })
     st.markdown("---")
-    if not is_manager(role):
-        st.warning("✏️ Kayıt düzenleme ve silme, yönetim rollerine açıktır.")
+    if not has_permission("project_edit"):
+        st.warning("✏️ Bu kullanıcı için kayıt düzenleme izni yok.")
     elif not st.session_state.projects:
         st.info("Düzenlenecek kayıt bulunmuyor.")
     else:
@@ -694,7 +736,7 @@ with tab4:
             save_state()
             st.success("Kayıt güncellendi.")
             st.rerun()
-        if role in {"admin", "yonetici"} and st.button("🗑️ Seçili kaydı sil", type="secondary"):
+        if has_permission("project_delete") and st.button("🗑️ Seçili kaydı sil", type="secondary"):
             st.session_state.projects.pop(index)
             save_state()
             st.warning("Kayıt silindi.")
@@ -702,8 +744,8 @@ with tab4:
 
 with tab5:
     st.subheader("⚙️ Ayarlar ve Yönetim")
-    if not is_manager(role):
-        st.warning("Bu alan yalnızca yönetim rollerine açıktır.")
+    if not has_permission("masters_manage") and not has_permission("users_manage"):
+        st.warning("Bu kullanıcı için yönetim izni yok.")
     else:
         st.markdown("#### 🪪 Usta Rehberi ve Performans")
         selected = st.selectbox("Detayını görmek istediğiniz usta", master_names(), key="guide_master")
@@ -770,7 +812,7 @@ with tab5:
                     save_state()
                     st.warning("Usta kaldırıldı.")
                     st.rerun()
-        if role == "admin":
+        if has_permission("users_manage"):
             st.markdown("---")
             st.markdown("#### 👤 Kullanıcı Yönetimi")
             with st.form("add_user", clear_on_submit=True):
@@ -793,16 +835,18 @@ with tab5:
             user_key = st.selectbox("Düzenlenecek kullanıcı", list(st.session_state.users), format_func=lambda key: f"{st.session_state.users[key]['name']} ({key})")
             edited = st.session_state.users[user_key]
             with st.form("edit_user"):
-                x1, x2, x3 = st.columns(3)
+                x1, x2, x3, x4 = st.columns(4)
                 changed_user_name = x1.text_input("Ad soyad", value=edited["name"])
                 changed_user_role = x2.selectbox("Rol", list(ROLES), index=list(ROLES).index(edited["role"]), format_func=lambda value: ROLES[value])
                 changed_password = x3.text_input("Yeni şifre (boş bırakılabilir)", type="password")
+                current_permissions = edited.get("permissions", list(ROLE_PERMISSIONS.get(edited["role"], set())))
+                changed_permissions = x4.multiselect("Ek izinler", list(PERMISSION_LABELS), default=current_permissions, format_func=lambda value: PERMISSION_LABELS[value])
                 save_user = st.form_submit_button("💾 Kullanıcıyı Güncelle", type="primary")
             if save_user:
                 if not changed_user_name.strip() or (changed_password and len(changed_password) < 6):
                     st.error("Ad soyad zorunlu; yeni şifre en az 6 karakter olmalı.")
                 else:
-                    edited.update({"name": changed_user_name.strip(), "role": changed_user_role})
+                    edited.update({"name": changed_user_name.strip(), "role": changed_user_role, "permissions": changed_permissions})
                     if changed_password:
                         edited["password"] = changed_password
                     if user_key == user["username"]:
